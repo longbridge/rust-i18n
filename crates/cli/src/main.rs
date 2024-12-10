@@ -21,7 +21,7 @@ enum CargoCli {
 /// that used `t!` macro.
 /// Then it will generate a YAML file and merge with the existing translations.
 ///
-/// https://github.com/longbridgeapp/rust-i18n
+/// https://github.com/longbridge/rust-i18n
 struct I18nArgs {
     /// Manually add a translation to the localization file.
     ///

@@ -316,7 +316,7 @@ mod tests {
         );
     }
 
-    // https://github.com/longbridgeapp/rust-i18n/issues/87
+    // https://github.com/longbridge/rust-i18n/issues/87
     #[test]
     fn test_set_locale_on_initialize() {
         rust_i18n::set_locale("zh-CN");

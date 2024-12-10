@@ -1,6 +1,6 @@
 # Rust I18n
 
-[![CI](https://github.com/longbridgeapp/rust-i18n/actions/workflows/ci.yml/badge.svg)](https://github.com/longbridgeapp/rust-i18n/actions/workflows/ci.yml) [![Docs](https://docs.rs/rust-i18n/badge.svg)](https://docs.rs/rust-i18n/) [![Crates.io](https://img.shields.io/crates/v/rust-i18n.svg)](https://crates.io/crates/rust-i18n)
+[![CI](https://github.com/longbridge/rust-i18n/actions/workflows/ci.yml/badge.svg)](https://github.com/longbridge/rust-i18n/actions/workflows/ci.yml) [![Docs](https://docs.rs/rust-i18n/badge.svg)](https://docs.rs/rust-i18n/) [![Crates.io](https://img.shields.io/crates/v/rust-i18n.svg)](https://crates.io/crates/rust-i18n)
 
 > 🎯 Let's make I18n things to easy!
 
@@ -305,13 +305,13 @@ Now you call [`t!`] will lookup translates from your own backend first, if not f
 
 ## Example
 
-A minimal example of using rust-i18n can be found [here](https://github.com/longbridgeapp/rust-i18n/tree/main/examples).
+A minimal example of using rust-i18n can be found [here](https://github.com/longbridge/rust-i18n/tree/main/examples).
 
 ## I18n Ally
 
 I18n Ally is a VS Code extension for helping you translate your Rust project.
 
-You can add [i18n-ally-custom-framework.yml](https://github.com/longbridgeapp/rust-i18n/blob/main/.vscode/i18n-ally-custom-framework.yml) to your project `.vscode` directory, and then use I18n Ally can parse `t!` marco to show translate text in VS Code editor.
+You can add [i18n-ally-custom-framework.yml](https://github.com/longbridge/rust-i18n/blob/main/.vscode/i18n-ally-custom-framework.yml) to your project `.vscode` directory, and then use I18n Ally can parse `t!` marco to show translate text in VS Code editor.
 
 ## Extractor
 
@@ -389,7 +389,7 @@ Rust I18n command to help you extract all untranslated texts from source code.
 
 It will iterate all Rust files in the source directory and extract all untranslated texts that used `t!` macro. Then it will generate a YAML file and merge with the existing translations.
 
-https://github.com/longbridgeapp/rust-i18n
+https://github.com/longbridge/rust-i18n
 
 Usage: cargo i18n [OPTIONS] [-- <SOURCE>]
 
@@ -441,6 +441,14 @@ t_lorem_ipsum           time:   [33.867 ns 34.286 ns 34.751 ns]
 ```
 
 The result `101 ns (0.0001 ms)` means if there have **10K** translate texts, it will cost `1ms`.
+
+## Use Cases
+
+- [longbridge-terminal](https://github.com/longbridge/longbridge-terminal)
+- [topgrade](https://github.com/topgrade-rs/topgrade)
+- [trippy](https://github.com/fujiapple852/trippy)
+- [hyperswitch](https://github.com/juspay/hyperswitch)
+- [MirrorX](https://github.com/MirrorX-Desktop/MirrorX)
 
 ## License
 

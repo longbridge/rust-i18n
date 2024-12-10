@@ -15,7 +15,7 @@ keywords = [
 license = "MIT"
 name = "rust-i18n"
 readme = "README.md"
-repository = "https://github.com/longbridgeapp/rust-i18n"
+repository = "https://github.com/longbridge/rust-i18n"
 version = "3.1.2"
 
 [workspace.dependencies]
