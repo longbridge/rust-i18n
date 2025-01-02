@@ -105,7 +105,7 @@ You can choose as you like.
 
 > \_version: 1
 
-You can also split the each language into difference files, and you can choise (YAML, JSON, TOML), for example: `en.json`:
+You can also split the each language into difference files, and you can choose (YAML, JSON, TOML), for example: `en.json`:
 
 ```bash
 .
