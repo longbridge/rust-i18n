@@ -63,10 +63,21 @@ impl I18nConfig {
     }
 
     pub fn parse(contents: &str) -> io::Result<Self> {
-        if !contents.contains("[i18n]") && !contents.contains("[package.metadata.i18n]") {
+        let package_metadata = contents.contains("[package.metadata.i18n]");
+        let workspace_metadata = contents.contains("[workspace.metadata.i18n]");
+
+        if !contents.contains("[i18n]") && !package_metadata && !workspace_metadata {
             return Ok(I18nConfig::default());
         }
-        let contents = contents.replace("[package.metadata.i18n]", "[i18n]");
+
+        let contents = if package_metadata {
+            contents.replace("[package.metadata.i18n]", "[i18n]")
+        } else if workspace_metadata {
+            contents.replace("[workspace.metadata.i18n]", "[i18n]")
+        } else {
+            contents.to_string()
+        };
+
         let mut config: MainConfig = toml::from_str(&contents)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
