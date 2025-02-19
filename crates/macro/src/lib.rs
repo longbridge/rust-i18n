@@ -3,7 +3,7 @@ use rust_i18n_support::{
     is_debug, load_locales, I18nConfig, DEFAULT_MINIFY_KEY, DEFAULT_MINIFY_KEY_LEN,
     DEFAULT_MINIFY_KEY_PREFIX, DEFAULT_MINIFY_KEY_THRESH,
 };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use syn::{parse_macro_input, Expr, Ident, LitBool, LitStr, Token};
 
 mod minify_key;
@@ -268,7 +268,7 @@ pub fn i18n(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 fn generate_code(
-    translations: HashMap<String, HashMap<String, String>>,
+    translations: BTreeMap<String, BTreeMap<String, String>>,
     args: Args,
 ) -> proc_macro2::TokenStream {
     let mut all_translations = Vec::<proc_macro2::TokenStream>::new();

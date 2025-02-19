@@ -1,7 +1,7 @@
 use normpath::PathExt;
 use std::fs::File;
 use std::io::prelude::*;
-use std::{collections::HashMap, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
 mod atomic_str;
 mod backend;
@@ -19,7 +19,7 @@ pub use minify_key::{
 
 type Locale = String;
 type Value = serde_json::Value;
-type Translations = HashMap<Locale, Value>;
+type Translations = BTreeMap<Locale, Value>;
 
 pub fn is_debug() -> bool {
     std::env::var("RUST_I18N_DEBUG").unwrap_or_else(|_| "0".to_string()) == "1"
@@ -43,9 +43,9 @@ fn merge_value(a: &mut Value, b: &Value) {
 pub fn load_locales<F: Fn(&str) -> bool>(
     locales_path: &str,
     ignore_if: F,
-) -> HashMap<String, HashMap<String, String>> {
-    let mut result: HashMap<String, HashMap<String, String>> = HashMap::new();
-    let mut translations = HashMap::new();
+) -> BTreeMap<String, BTreeMap<String, String>> {
+    let mut result: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    let mut translations = BTreeMap::new();
     let locales_path = match Path::new(locales_path).normalize() {
         Ok(p) => p,
         Err(e) => {
@@ -200,7 +200,7 @@ fn parse_file_v2(key_prefix: &str, data: &serde_json::Value) -> Option<Translati
                     //  zh-CN: 欢迎
                     if text.is_string() {
                         let key = format_keys(&[key_prefix, key]);
-                        let sub_trs = HashMap::from([(key, text.clone())]);
+                        let sub_trs = BTreeMap::from([(key, text.clone())]);
                         let sub_value = serde_json::to_value(&sub_trs).unwrap();
 
                         trs.entry(locale.clone())
@@ -253,8 +253,8 @@ fn format_keys(keys: &[&str]) -> String {
         .join(".")
 }
 
-fn flatten_keys(prefix: &str, trs: &Value) -> HashMap<String, String> {
-    let mut v = HashMap::<String, String>::new();
+fn flatten_keys(prefix: &str, trs: &Value) -> BTreeMap<String, String> {
+    let mut v = BTreeMap::<String, String>::new();
     let prefix = prefix.to_string();
 
     match &trs {
