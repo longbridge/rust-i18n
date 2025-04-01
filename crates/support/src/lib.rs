@@ -126,7 +126,7 @@ pub fn load_locales<F: Fn(&str) -> bool>(
 // Parse Translations from file to support multiple formats
 fn parse_file(content: &str, ext: &str, locale: &str) -> Result<Translations, String> {
     let result = match ext {
-        "yml" | "yaml" => serde_yml::from_str::<serde_json::Value>(content)
+        "yml" | "yaml" => serde_yaml::from_str::<serde_json::Value>(content)
             .map_err(|err| format!("Invalid YAML format, {}", err)),
         "json" => serde_json::from_str::<serde_json::Value>(content)
             .map_err(|err| format!("Invalid JSON format, {}", err)),
@@ -354,14 +354,14 @@ mod tests {
 
     #[test]
     fn test_get_version() {
-        let json = serde_yml::from_str::<serde_json::Value>("_version: 2").unwrap();
+        let json = serde_yaml::from_str::<serde_json::Value>("_version: 2").unwrap();
         assert_eq!(super::get_version(&json), 2);
 
-        let json = serde_yml::from_str::<serde_json::Value>("_version: 1").unwrap();
+        let json = serde_yaml::from_str::<serde_json::Value>("_version: 1").unwrap();
         assert_eq!(super::get_version(&json), 1);
 
         // Default fallback to 1
-        let json = serde_yml::from_str::<serde_json::Value>("foo: Foo").unwrap();
+        let json = serde_yaml::from_str::<serde_json::Value>("foo: Foo").unwrap();
         assert_eq!(super::get_version(&json), 1);
     }
 

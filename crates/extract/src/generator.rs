@@ -50,7 +50,7 @@ fn convert_text(trs: &Translations, format: &str) -> String {
     match format {
         "json" => serde_json::to_string_pretty(&value).unwrap(),
         "yaml" | "yml" => {
-            let text = serde_yml::to_string(&value).unwrap();
+            let text = serde_yaml::to_string(&value).unwrap();
             // Remove leading `---`
             text.trim_start_matches("---").trim_start().to_string()
         }

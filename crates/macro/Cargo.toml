@@ -17,7 +17,7 @@ quote.workspace = true
 rust-i18n-support.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yml.workspace = true
+serde_yaml.workspace = true
 syn.workspace = true
 
 [dev-dependencies]

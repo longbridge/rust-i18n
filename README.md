@@ -264,7 +264,7 @@ impl RemoteI18n {
     fn new() -> Self {
         // fetch translations from remote URL
         let response = reqwest::blocking::get("https://your-host.com/assets/locales.yml").unwrap();
-        let trs = serde_yml::from_str::<HashMap<String, HashMap<String, String>>>(&response.text().unwrap()).unwrap();
+        let trs = serde_yaml::from_str::<HashMap<String, HashMap<String, String>>>(&response.text().unwrap()).unwrap();
 
         return Self {
             trs
