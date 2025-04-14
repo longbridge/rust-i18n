@@ -98,6 +98,8 @@ fn add_translations(
     }
 }
 
+/// Reads the configuration either from the `i18n.toml` file, if present,
+/// or from the `Cargo.toml` file otherwise.
 fn read_config(source_path: &str) -> std::io::Result<I18nConfig> {
     let root_dir = std::path::Path::new(&source_path);
     let config_file = root_dir.join(I18N_CONFIG_FILE);
