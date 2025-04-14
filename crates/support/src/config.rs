@@ -54,7 +54,17 @@ impl I18nConfig {
     pub fn load(cargo_root: &Path) -> io::Result<Self> {
         let cargo_file = cargo_root.join("Cargo.toml");
         let mut file = fs::File::open(&cargo_file)
-            .unwrap_or_else(|e| panic!("Fail to open {}, {}", cargo_file.display(), e));
+            .unwrap_or_else(|e| panic!("Failed to open {}, {}", cargo_file.display(), e));
+
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+
+        Self::parse(&contents)
+    }
+
+    pub fn load_from_file(file: &Path) -> io::Result<Self> {
+        let mut file = fs::File::open(file)
+            .unwrap_or_else(|e| panic!("Failed to open {}, {}", file.display(), e));
 
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
@@ -204,6 +214,16 @@ fn test_load() {
     let cargo_root = workdir.join("../../examples/foo");
 
     let cfg = I18nConfig::load(&cargo_root).unwrap();
+    assert_eq!(cfg.default_locale, "en");
+    assert_eq!(cfg.available_locales, vec!["en", "zh-CN"]);
+}
+
+#[test]
+fn test_load_from_file() {
+    let workdir = Path::new(env!["CARGO_MANIFEST_DIR"]);
+    let file = workdir.join("../../examples/foo/i18n.toml");
+
+    let cfg = I18nConfig::load_from_file(&file).unwrap();
     assert_eq!(cfg.default_locale, "en");
     assert_eq!(cfg.available_locales, vec!["en", "zh-CN"]);
 }
