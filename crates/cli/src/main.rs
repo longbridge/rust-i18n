@@ -110,7 +110,7 @@ fn read_config(source_path: &str) -> std::io::Result<I18nConfig> {
     if config_file_exists {
         I18nConfig::load_from_file(&config_file)
     } else {
-        I18nConfig::load(&root_dir.join("Cargo.toml"))
+        I18nConfig::load(&root_dir)
     }
 }
 
