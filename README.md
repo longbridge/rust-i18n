@@ -254,6 +254,7 @@ For example, you can use HTTP API for load translations from remote server:
 #  }
 # }
 # use std::collections::HashMap;
+# use std::borrow::Cow;
 use rust_i18n::Backend;
 
 pub struct RemoteI18n {
@@ -273,14 +274,14 @@ impl RemoteI18n {
 }
 
 impl Backend for RemoteI18n {
-    fn available_locales(&self) -> Vec<&str> {
-        return self.trs.keys().map(|k| k.as_str()).collect();
+    fn available_locales(&self) -> Vec<Cow<'_, str>> {
+        return self.trs.keys().map(|k| Cow::from(k.as_str())).collect();
     }
 
-    fn translate(&self, locale: &str, key: &str) -> Option<&str> {
+    fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>> {
         // Write your own lookup logic here.
         // For example load from database
-        return self.trs.get(locale)?.get(key).map(|k| k.as_str());
+        return self.trs.get(locale)?.get(key).map(|k| Cow::from(k.as_str()));
     }
 }
 ```
@@ -293,8 +294,8 @@ Now you can init rust_i18n by extend your own backend:
 #   fn new() -> Self { todo!() }
 # }
 # impl rust_i18n::Backend for RemoteI18n {
-#   fn available_locales(&self) -> Vec<&str> { todo!() }
-#   fn translate(&self, locale: &str, key: &str) -> Option<&str> { todo!() }
+#   fn available_locales(&self) -> Vec<std::borrow::Cow<'_, str>> { todo!() }
+#   fn translate(&self, locale: &str, key: &str) -> Option<std::borrow::Cow<'_, str>> { todo!() }
 # }
 rust_i18n::i18n!("locales", backend = RemoteI18n::new());
 ```
