@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 struct TestBackend {
     trs: HashMap<String, String>,
@@ -13,13 +13,13 @@ impl TestBackend {
 }
 
 impl rust_i18n::Backend for TestBackend {
-    fn available_locales(&self) -> Vec<&str> {
-        vec!["pt", "en"]
+    fn available_locales(&self) -> Vec<Cow<'_, str>> {
+        vec![Cow::from("pt"), Cow::from("en")]
     }
 
-    fn translate(&self, locale: &str, key: &str) -> Option<&str> {
+    fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>> {
         if locale == "pt" {
-            return self.trs.get(key).map(|v| v.as_str());
+            return self.trs.get(key).map(|v| Cow::from(v.as_str()));
         }
         None
     }

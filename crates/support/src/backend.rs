@@ -1,11 +1,12 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// I18n backend trait
 pub trait Backend: Send + Sync + 'static {
     /// Return the available locales
-    fn available_locales(&self) -> Vec<&str>;
+    fn available_locales(&self) -> Vec<Cow<'_, str>>;
     /// Get the translation for the given locale and key
-    fn translate(&self, locale: &str, key: &str) -> Option<&str>;
+    fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>>;
 }
 
 pub trait BackendExt: Backend {
@@ -25,7 +26,7 @@ where
     A: Backend,
     B: Backend,
 {
-    fn available_locales(&self) -> Vec<&str> {
+    fn available_locales(&self) -> Vec<Cow<'_, str>> {
         let mut available_locales = self.0.available_locales();
         for locale in self.1.available_locales() {
             if !available_locales.contains(&locale) {
@@ -36,7 +37,7 @@ where
     }
 
     #[inline]
-    fn translate(&self, locale: &str, key: &str) -> Option<&str> {
+    fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>> {
         self.1
             .translate(locale, key)
             .or_else(|| self.0.translate(locale, key))
@@ -80,19 +81,19 @@ impl SimpleBackend {
 }
 
 impl Backend for SimpleBackend {
-    fn available_locales(&self) -> Vec<&str> {
+    fn available_locales(&self) -> Vec<Cow<'_, str>> {
         let mut locales = self
             .translations
             .keys()
-            .map(|k| k.as_str())
+            .map(|k| Cow::from(k.as_str()))
             .collect::<Vec<_>>();
         locales.sort();
         locales
     }
 
-    fn translate(&self, locale: &str, key: &str) -> Option<&str> {
+    fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>> {
         if let Some(trs) = self.translations.get(locale) {
-            return trs.get(key).map(|s| s.as_str());
+            return trs.get(key).map(|s| Cow::from(s.as_str()));
         }
 
         None
@@ -109,6 +110,7 @@ impl Default for SimpleBackend {
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
     use std::collections::HashMap;
 
     use super::SimpleBackend;
@@ -127,10 +129,13 @@ mod tests {
         data_cn.insert("foo", "Foo 测试");
         backend.add_translations("zh-CN", &data_cn);
 
-        assert_eq!(backend.translate("en", "hello"), Some("Hello"));
-        assert_eq!(backend.translate("en", "foo"), Some("Foo bar"));
-        assert_eq!(backend.translate("zh-CN", "hello"), Some("你好"));
-        assert_eq!(backend.translate("zh-CN", "foo"), Some("Foo 测试"));
+        assert_eq!(backend.translate("en", "hello"), Some(Cow::from("Hello")));
+        assert_eq!(backend.translate("en", "foo"), Some(Cow::from("Foo bar")));
+        assert_eq!(backend.translate("zh-CN", "hello"), Some(Cow::from("你好")));
+        assert_eq!(
+            backend.translate("zh-CN", "foo"),
+            Some(Cow::from("Foo 测试"))
+        );
 
         assert_eq!(backend.available_locales(), vec!["en", "zh-CN"]);
     }
@@ -158,8 +163,11 @@ mod tests {
         backend2.add_translations("zh-CN", &data_cn2);
 
         let combined = backend.extend(backend2);
-        assert_eq!(combined.translate("en", "hello"), Some("Hello2"));
-        assert_eq!(combined.translate("zh-CN", "hello"), Some("你好2"));
+        assert_eq!(combined.translate("en", "hello"), Some(Cow::from("Hello2")));
+        assert_eq!(
+            combined.translate("zh-CN", "hello"),
+            Some(Cow::from("你好2"))
+        );
 
         assert_eq!(combined.available_locales(), vec!["en", "zh-CN"]);
     }
