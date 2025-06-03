@@ -106,7 +106,7 @@ pub fn load_locales<F: Fn(&str) -> bool>(
             .expect("Read file failed.");
 
         let trs = parse_file(&content, ext, locale)
-            .unwrap_or_else(|_| panic!("Parse file `{}` failed", entry.display()));
+            .unwrap_or_else(|e| panic!("Parse file `{}` failed, reason: {}", entry.display(), e));
 
         trs.into_iter().for_each(|(k, new_value)| {
             translations
