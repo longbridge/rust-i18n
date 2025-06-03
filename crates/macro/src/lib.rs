@@ -276,7 +276,9 @@ fn generate_code(
     translations.iter().for_each(|(locale, trs)| {
         trs.iter().for_each(|(k, v)| {
             all_translations.push(quote! {
-                backend.add_translations(#locale, &std::collections::HashMap::from([(#k, #v)]));
+                let mut hash_map = rust_i18n::DeterministicHashMap::default();
+                hash_map.insert(#k, #v);
+                backend.add_translations(#locale, &hash_map);
             });
         });
     });

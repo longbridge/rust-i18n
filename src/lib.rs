@@ -9,8 +9,9 @@ pub use once_cell;
 #[doc(hidden)]
 pub use rust_i18n_macro::{_minify_key, _tr, i18n};
 pub use rust_i18n_support::{
-    AtomicStr, Backend, BackendExt, CowStr, MinifyKey, SimpleBackend, DEFAULT_MINIFY_KEY,
-    DEFAULT_MINIFY_KEY_LEN, DEFAULT_MINIFY_KEY_PREFIX, DEFAULT_MINIFY_KEY_THRESH,
+    AtomicStr, Backend, BackendExt, CowStr, DeterministicHashMap, MinifyKey, SimpleBackend,
+    DEFAULT_MINIFY_KEY, DEFAULT_MINIFY_KEY_LEN, DEFAULT_MINIFY_KEY_PREFIX,
+    DEFAULT_MINIFY_KEY_THRESH,
 };
 
 static CURRENT_LOCALE: Lazy<AtomicStr> = Lazy::new(|| AtomicStr::from("en"));

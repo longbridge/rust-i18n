@@ -253,19 +253,19 @@ For example, you can use HTTP API for load translations from remote server:
 #    pub fn get(_url: &str) -> Result<Response, Box<dyn std::error::Error>> { todo!() }
 #  }
 # }
-# use std::collections::HashMap;
+# use rust_i18n::DeterministicHashMap;
 # use std::borrow::Cow;
 use rust_i18n::Backend;
 
 pub struct RemoteI18n {
-    trs: HashMap<String, HashMap<String, String>>,
+    trs: DeterministicHashMap<String, DeterministicHashMap<String, String>>,
 }
 
 impl RemoteI18n {
     fn new() -> Self {
         // fetch translations from remote URL
         let response = reqwest::blocking::get("https://your-host.com/assets/locales.yml").unwrap();
-        let trs = serde_yaml::from_str::<HashMap<String, HashMap<String, String>>>(&response.text().unwrap()).unwrap();
+        let trs = serde_yaml::from_str::<DeterministicHashMap<String, DeterministicHashMap<String, String>>>(&response.text().unwrap()).unwrap();
 
         return Self {
             trs

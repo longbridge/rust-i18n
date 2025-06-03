@@ -2,8 +2,8 @@ use anyhow::Error;
 use clap::{Args, Parser};
 use rust_i18n_extract::extractor::Message;
 use rust_i18n_extract::{extractor, generator, iter};
-use rust_i18n_support::{I18nConfig, MinifyKey};
-use std::{collections::HashMap, path::Path};
+use rust_i18n_support::{DeterministicHashMap, I18nConfig, MinifyKey};
+use std::path::Path;
 
 #[derive(Parser)]
 #[command(name = "cargo")]
@@ -66,7 +66,7 @@ fn translate_value_parser(s: &str) -> Result<(String, String), std::io::Error> {
 /// Add translations to the localize file for t!
 fn add_translations(
     list: &[(String, String)],
-    results: &mut HashMap<String, Message>,
+    results: &mut DeterministicHashMap<String, Message>,
     cfg: &I18nConfig,
 ) {
     let I18nConfig {
@@ -99,7 +99,7 @@ fn add_translations(
 fn main() -> Result<(), Error> {
     let CargoCli::I18n(args) = CargoCli::parse();
 
-    let mut results = HashMap::new();
+    let mut results = DeterministicHashMap::default();
 
     let source_path = args.source.expect("Missing source path");
 

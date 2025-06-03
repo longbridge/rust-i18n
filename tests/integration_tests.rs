@@ -1,12 +1,13 @@
-use std::{borrow::Cow, collections::HashMap};
+use rust_i18n::DeterministicHashMap;
+use std::borrow::Cow;
 
 struct TestBackend {
-    trs: HashMap<String, String>,
+    trs: DeterministicHashMap<String, String>,
 }
 
 impl TestBackend {
     fn new() -> Self {
-        let mut trs = HashMap::new();
+        let mut trs = DeterministicHashMap::default();
         trs.insert("foo".into(), "pt-fake.foo".to_string());
         Self { trs }
     }
