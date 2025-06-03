@@ -1,25 +1,26 @@
-use std::collections::HashMap;
+use rust_i18n::DeterministicHashMap;
+use std::borrow::Cow;
 
 struct TestBackend {
-    trs: HashMap<String, String>,
+    trs: DeterministicHashMap<String, String>,
 }
 
 impl TestBackend {
     fn new() -> Self {
-        let mut trs = HashMap::new();
+        let mut trs = DeterministicHashMap::default();
         trs.insert("foo".into(), "pt-fake.foo".to_string());
         Self { trs }
     }
 }
 
 impl rust_i18n::Backend for TestBackend {
-    fn available_locales(&self) -> Vec<&str> {
-        vec!["pt", "en"]
+    fn available_locales(&self) -> Vec<Cow<'_, str>> {
+        vec![Cow::from("pt"), Cow::from("en")]
     }
 
-    fn translate(&self, locale: &str, key: &str) -> Option<&str> {
+    fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>> {
         if locale == "pt" {
-            return self.trs.get(key).map(|v| v.as_str());
+            return self.trs.get(key).map(|v| Cow::from(v.as_str()));
         }
         None
     }

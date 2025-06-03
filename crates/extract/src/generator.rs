@@ -1,11 +1,10 @@
 use crate::extractor::Message;
-use rust_i18n_support::load_locales;
-use std::collections::HashMap;
+use rust_i18n_support::{load_locales, DeterministicHashMap};
 use std::io::prelude::*;
 use std::io::Result;
 use std::path::Path;
 
-type Translations = HashMap<String, HashMap<String, String>>;
+type Translations = DeterministicHashMap<String, DeterministicHashMap<String, String>>;
 
 pub fn generate<'a, P: AsRef<Path>>(
     output_path: P,
@@ -65,7 +64,7 @@ fn generate_result<'a, P: AsRef<Path>>(
     all_locales: &Vec<String>,
     messages: impl IntoIterator<Item = (&'a String, &'a Message)> + Clone,
 ) -> Translations {
-    let mut trs = Translations::new();
+    let mut trs = Translations::default();
 
     for locale in all_locales {
         println!("Checking [{}] and generating untranslated texts...", locale);
@@ -136,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_convert_text() {
-        let mut trs = Translations::new();
+        let mut trs = Translations::default();
         let format = "json";
 
         let result = convert_text(&trs, format);
@@ -148,7 +147,7 @@ mod tests {
         assert_eq_json(&result, expect);
 
         trs.insert("hello".to_string(), {
-            let mut map = HashMap::new();
+            let mut map = DeterministicHashMap::default();
             map.insert("en".to_string(), "Hello".to_string());
             map.insert("zh".to_string(), "你好".to_string());
             map

@@ -1,11 +1,10 @@
 use anyhow::Error;
 use proc_macro2::{TokenStream, TokenTree};
 use quote::ToTokens;
-use rust_i18n_support::I18nConfig;
-use std::collections::HashMap;
+use rust_i18n_support::{DeterministicHashMap, I18nConfig};
 use std::path::PathBuf;
 
-pub type Results = HashMap<String, Message>;
+pub type Results = DeterministicHashMap<String, Message>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Location {
@@ -234,7 +233,7 @@ mod tests {
             )
         ];
 
-        let mut results = HashMap::new();
+        let mut results = DeterministicHashMap::default();
 
         let mut ex = Extractor {
             results: &mut results,

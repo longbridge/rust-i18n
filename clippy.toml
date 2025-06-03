@@ -1,0 +1,4 @@
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "Use `rust_i18n::DeterministicHashMap` instead for determinism." },
+    { path = "std::collections::HashSet", reason = "Use `rust_i18n::DeterministicHashSet` instead for determinism." },
+]

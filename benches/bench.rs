@@ -1,11 +1,11 @@
-use rust_i18n::t;
+use rust_i18n::{t, DeterministicHashMap};
 
 rust_i18n::i18n!("./tests/locales");
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
 lazy_static::lazy_static! {
-pub static ref DICT: std::collections::HashMap<&'static str, &'static str> =
+pub static ref DICT: DeterministicHashMap<&'static str, &'static str> =
     [
         ("hello", "Bar - Hello, World!"),
     ].iter().cloned().collect();
