@@ -120,6 +120,11 @@ fn main() -> Result<(), Error> {
 
     let output_path = Path::new(&source_path).join(&cfg.load_path);
 
+    let result = generator::stale(&output_path, &cfg.available_locales, messages.clone());
+    if result.is_err() {
+        has_error = true;
+    }
+
     let result = generator::generate(output_path, &cfg.available_locales, messages.clone());
     if result.is_err() {
         has_error = true;
