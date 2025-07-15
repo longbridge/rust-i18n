@@ -59,7 +59,7 @@ fn test_t_concurrent() {
                         if m == 0 {
                             t!("hello");
                         } else {
-                            t!("hello", locale = locales[m]);
+                            t!("hello", locale = &locales[m]);
                         }
                     }
                 }

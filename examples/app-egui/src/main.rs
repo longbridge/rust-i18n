@@ -67,7 +67,7 @@ impl eframe::App for MyApp {
                 let locales = rust_i18n::available_locales!();
                 for (i, locale) in locales.iter().enumerate() {
                     if ui
-                        .selectable_value(&mut self.locale_id, i, *locale)
+                        .selectable_value(&mut self.locale_id, i, locale.clone())
                         .changed()
                     {
                         rust_i18n::set_locale(locale);

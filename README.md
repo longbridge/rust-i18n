@@ -253,18 +253,19 @@ For example, you can use HTTP API for load translations from remote server:
 #    pub fn get(_url: &str) -> Result<Response, Box<dyn std::error::Error>> { todo!() }
 #  }
 # }
-# use std::collections::HashMap;
+# use rust_i18n::DeterministicHashMap;
+# use std::borrow::Cow;
 use rust_i18n::Backend;
 
 pub struct RemoteI18n {
-    trs: HashMap<String, HashMap<String, String>>,
+    trs: DeterministicHashMap<String, DeterministicHashMap<String, String>>,
 }
 
 impl RemoteI18n {
     fn new() -> Self {
         // fetch translations from remote URL
         let response = reqwest::blocking::get("https://your-host.com/assets/locales.yml").unwrap();
-        let trs = serde_yaml::from_str::<HashMap<String, HashMap<String, String>>>(&response.text().unwrap()).unwrap();
+        let trs = serde_yaml::from_str::<DeterministicHashMap<String, DeterministicHashMap<String, String>>>(&response.text().unwrap()).unwrap();
 
         return Self {
             trs
@@ -273,14 +274,14 @@ impl RemoteI18n {
 }
 
 impl Backend for RemoteI18n {
-    fn available_locales(&self) -> Vec<&str> {
-        return self.trs.keys().map(|k| k.as_str()).collect();
+    fn available_locales(&self) -> Vec<Cow<'_, str>> {
+        return self.trs.keys().map(|k| Cow::from(k.as_str())).collect();
     }
 
-    fn translate(&self, locale: &str, key: &str) -> Option<&str> {
+    fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>> {
         // Write your own lookup logic here.
         // For example load from database
-        return self.trs.get(locale)?.get(key).map(|k| k.as_str());
+        return self.trs.get(locale)?.get(key).map(|k| Cow::from(k.as_str()));
     }
 }
 ```
@@ -293,8 +294,8 @@ Now you can init rust_i18n by extend your own backend:
 #   fn new() -> Self { todo!() }
 # }
 # impl rust_i18n::Backend for RemoteI18n {
-#   fn available_locales(&self) -> Vec<&str> { todo!() }
-#   fn translate(&self, locale: &str, key: &str) -> Option<&str> { todo!() }
+#   fn available_locales(&self) -> Vec<std::borrow::Cow<'_, str>> { todo!() }
+#   fn translate(&self, locale: &str, key: &str) -> Option<std::borrow::Cow<'_, str>> { todo!() }
 # }
 rust_i18n::i18n!("locales", backend = RemoteI18n::new());
 ```

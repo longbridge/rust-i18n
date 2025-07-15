@@ -276,7 +276,9 @@ fn generate_code(
     translations.iter().for_each(|(locale, trs)| {
         trs.iter().for_each(|(k, v)| {
             all_translations.push(quote! {
-                backend.add_translations(#locale, &std::collections::HashMap::from([(#k, #v)]));
+                let mut hash_map = rust_i18n::DeterministicHashMap::default();
+                hash_map.insert(#k, #v);
+                backend.add_translations(#locale, &hash_map);
             });
         });
     });
@@ -319,7 +321,6 @@ fn generate_code(
 
     quote! {
         use rust_i18n::{BackendExt, CowStr, MinifyKey};
-        use std::borrow::Cow;
 
         /// I18n backend instance
         ///
@@ -356,7 +357,7 @@ fn generate_code(
         #[inline]
         #[allow(missing_docs)]
         #[doc(hidden)]
-        pub fn _rust_i18n_translate<'r>(locale: &str, key: &'r str) -> Cow<'r, str> {
+        pub fn _rust_i18n_translate<'r>(locale: &str, key: &'r str) -> std::borrow::Cow<'r, str> {
             _rust_i18n_try_translate(locale, key).unwrap_or_else(|| {
                 if locale.is_empty() {
                     key.into()
@@ -370,20 +371,19 @@ fn generate_code(
         #[inline]
         #[doc(hidden)]
         #[allow(missing_docs)]
-        pub fn _rust_i18n_try_translate<'r>(locale: &str, key: impl AsRef<str>) -> Option<Cow<'r, str>> {
+        pub fn _rust_i18n_try_translate<'r>(locale: &str, key: impl AsRef<str>) -> Option<std::borrow::Cow<'r, str>> {
             _RUST_I18N_BACKEND.translate(locale, key.as_ref())
-                .map(Cow::from)
                 .or_else(|| {
                     let mut current_locale = locale;
                     while let Some(fallback_locale) = _rust_i18n_lookup_fallback(current_locale) {
                         if let Some(value) = _RUST_I18N_BACKEND.translate(fallback_locale, key.as_ref()) {
-                            return Some(Cow::from(value));
+                            return Some(value);
                         }
                         current_locale = fallback_locale;
                     }
 
                     _RUST_I18N_FALLBACK_LOCALE.and_then(|fallback| {
-                        fallback.iter().find_map(|locale| _RUST_I18N_BACKEND.translate(locale, key.as_ref()).map(Cow::from))
+                        fallback.iter().find_map(|locale| _RUST_I18N_BACKEND.translate(locale, key.as_ref()))
                     })
                 })
         }
@@ -391,7 +391,7 @@ fn generate_code(
         #[inline]
         #[doc(hidden)]
         #[allow(missing_docs)]
-        pub fn _rust_i18n_available_locales() -> Vec<&'static str> {
+        pub fn _rust_i18n_available_locales() -> Vec<std::borrow::Cow<'static, str>> {
             let mut locales = _RUST_I18N_BACKEND.available_locales();
             locales.sort();
             locales
