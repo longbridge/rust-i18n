@@ -1,0 +1,3 @@
+[i18n]
+available-locales = ["en", "zh-CN"]
+default-locale = "en"

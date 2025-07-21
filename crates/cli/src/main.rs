@@ -5,6 +5,8 @@ use rust_i18n_extract::{extractor, generator, iter};
 use rust_i18n_support::{I18nConfig, MinifyKey};
 use std::{collections::HashMap, path::Path};
 
+const I18N_CONFIG_FILE: &str = "i18n.toml";
+
 #[derive(Parser)]
 #[command(name = "cargo")]
 #[command(bin_name = "cargo")]
@@ -96,6 +98,22 @@ fn add_translations(
     }
 }
 
+/// Reads the configuration either from the `i18n.toml` file, if present,
+/// or from the `Cargo.toml` file otherwise.
+fn read_config(source_path: &str) -> std::io::Result<I18nConfig> {
+    let root_dir = std::path::Path::new(&source_path);
+    let config_file = root_dir.join(I18N_CONFIG_FILE);
+
+    let config_file_exists = std::fs::exists(&config_file)
+        .unwrap_or_else(|err| panic!("Error opening '{I18N_CONFIG_FILE}': {err}"));
+
+    if config_file_exists {
+        I18nConfig::load_from_file(&config_file)
+    } else {
+        I18nConfig::load(&root_dir)
+    }
+}
+
 fn main() -> Result<(), Error> {
     let CargoCli::I18n(args) = CargoCli::parse();
 
@@ -103,7 +121,7 @@ fn main() -> Result<(), Error> {
 
     let source_path = args.source.expect("Missing source path");
 
-    let cfg = I18nConfig::load(std::path::Path::new(&source_path))?;
+    let cfg = read_config(&source_path)?;
 
     iter::iter_crate(&source_path, |path, source| {
         extractor::extract(&mut results, path, source, cfg.clone())
