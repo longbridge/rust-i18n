@@ -318,14 +318,14 @@ You can add [i18n-ally-custom-framework.yml](https://github.com/longbridge/rust-
 
 > **Experimental**
 
-We provided a `cargo i18n` command line tool for help you extract the untranslated texts from the source code and then write into YAML file.
+We provided a `cargo-i18n` command line tool for help you extract the untranslated texts from the source code and then write into YAML file.
 
 > In current only output YAML, and use `_version: 2` format.
 
-You can install it via `cargo install rust-i18n-cli`, then you get `cargo i18n` command.
+You can install it via `cargo install cargo-i18n-cli`, then you get the `cargo-i18n` command.
 
 ```bash
-$ cargo install rust-i18n-cli
+$ cargo install cargo-i18n-cli
 ```
 
 ### Extractor Config
