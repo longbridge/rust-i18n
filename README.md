@@ -322,10 +322,10 @@ We provided a `cargo-i18n` command line tool for help you extract the untranslat
 
 > In current only output YAML, and use `_version: 2` format.
 
-You can install it via `cargo install cargo-i18n-cli`, then you get the `cargo-i18n` command.
+You can install it via `cargo install rust-i18n-cli`, then you get the `cargo-i18n` command.
 
 ```bash
-$ cargo install cargo-i18n-cli
+$ cargo install rust-i18n-cli
 ```
 
 ### Extractor Config
