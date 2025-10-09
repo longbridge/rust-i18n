@@ -1,19 +1,12 @@
 use anyhow::Error;
-use clap::{Args, Parser};
+use clap::Parser;
 use rust_i18n_extract::extractor::Message;
 use rust_i18n_extract::{extractor, generator, iter};
 use rust_i18n_support::{I18nConfig, MinifyKey};
 use std::{collections::HashMap, path::Path};
 
 #[derive(Parser)]
-#[command(name = "cargo")]
-#[command(bin_name = "cargo")]
-enum CargoCli {
-    I18n(I18nArgs),
-}
-
-#[derive(Args)]
-#[command(author, version)]
+#[command(author, bin_name = "cargo", name = "cargo", version)]
 // #[command(propagate_version = true)]
 /// Rust I18n command to help you extract all untranslated texts from source code.
 ///
@@ -97,8 +90,7 @@ fn add_translations(
 }
 
 fn main() -> Result<(), Error> {
-    let CargoCli::I18n(args) = CargoCli::parse();
-
+    let args = I18nArgs::parse();
     let mut results = HashMap::new();
 
     let source_path = args.source.expect("Missing source path");
