@@ -16,7 +16,7 @@ license = "MIT"
 name = "rust-i18n"
 readme = "README.md"
 repository = "https://github.com/longbridge/rust-i18n"
-version = "4.0.0-preview0"
+version = "4.0.0-preview1"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -36,9 +36,9 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1.0.2"
 regex = "1"
 rust-i18n = { path = "." }
-rust-i18n-extract = { path = "./crates/extract", version = "4.0.0-preview0" }
-rust-i18n-macro = { path = "./crates/macro", version = "4.0.0-preview0" }
-rust-i18n-support = { path = "./crates/support", version = "4.0.0-preview0" }
+rust-i18n-extract = { path = "./crates/extract", version = "4.0.0-preview1" }
+rust-i18n-macro = { path = "./crates/macro", version = "4.0.0-preview1" }
+rust-i18n-support = { path = "./crates/support", version = "4.0.0-preview1" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9.33"
