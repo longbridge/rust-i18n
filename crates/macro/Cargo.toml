@@ -11,7 +11,6 @@ version = "4.0.0-preview0"
 
 [dependencies]
 glob.workspace = true
-once_cell.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 rust-i18n-support.workspace = true
