@@ -456,6 +456,8 @@ The result `101 ns (0.0001 ms)` means if there have **10K** translate texts, it 
 - [trippy](https://github.com/fujiapple852/trippy)
 - [hyperswitch](https://github.com/juspay/hyperswitch)
 - [MirrorX](https://github.com/MirrorX-Desktop/MirrorX)
+- [Clash Verge](https://github.com/clash-verge-rev/clash-verge-rev)
+- [tracker](https://github.com/ShenMian/tracker)
 
 ## License
 
