@@ -23,6 +23,19 @@ impl rust_i18n::Backend for TestBackend {
         }
         None
     }
+
+    fn messages_for_locale(&self, locale: &str) -> Option<Vec<(Cow<'_, str>, Cow<'_, str>)>> {
+        if locale == "pt" {
+            Some(
+                self.trs
+                    .iter()
+                    .map(|(k, v)| (Cow::from(k.as_str()), Cow::from(v.as_str())))
+                    .collect(),
+            )
+        } else {
+            None
+        }
+    }
 }
 
 rust_i18n::i18n!(
