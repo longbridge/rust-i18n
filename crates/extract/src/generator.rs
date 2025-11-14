@@ -7,6 +7,35 @@ use std::path::Path;
 
 type Translations = HashMap<String, HashMap<String, String>>;
 
+/// Check for stale translation (translations that aren't used by the app anymore)
+pub fn stale<'a, P: AsRef<Path>>(
+    output_path: P,
+    all_locales: &Vec<String>,
+    messages: impl IntoIterator<Item = (&'a String, &'a Message)> + Clone,
+) -> Result<()> {
+    let filename = "STALE.yml";
+    let format = "yaml";
+
+    let trs = find_stale_translations(&output_path, filename, all_locales, messages);
+
+    if trs.is_empty() {
+        println!("Everything is up to date.\n");
+
+        return Ok(());
+    }
+
+    eprintln!("Found {} texts that can be removed.", trs.len());
+    eprintln!("----------------------------------------");
+    eprintln!("Writing to {}\n", filename);
+
+    let text = convert_text(&trs, format);
+    write_file(&output_path, filename, &text)?;
+
+    // Finally, return error for let CI fail
+    let err = std::io::Error::new(std::io::ErrorKind::Other, "");
+    Err(err)
+}
+
 pub fn generate<'a, P: AsRef<Path>>(
     output_path: P,
     all_locales: &Vec<String>,
@@ -57,6 +86,40 @@ fn convert_text(trs: &Translations, format: &str) -> String {
         "toml" => toml::to_string_pretty(&value).unwrap(),
         _ => unreachable!(),
     }
+}
+
+fn find_stale_translations<'a, P: AsRef<Path>>(
+    output_path: P,
+    output_filename: &str,
+    all_locales: &Vec<String>,
+    messages: impl IntoIterator<Item = (&'a String, &'a Message)> + Clone,
+) -> Translations {
+    let mut trs = Translations::new();
+
+    let existing_trs: HashMap<&String, &Message> = messages.into_iter().collect();
+
+    for locale in all_locales {
+        println!("Checking [{}] for stale translations...", locale);
+
+        // ~/work/my-project/locales
+        let output_path = output_path.as_ref().display().to_string();
+
+        let ignore_file = |fname: &str| fname.ends_with(&output_filename);
+        let data = load_locales(&output_path, ignore_file);
+
+        // Check for stale translation (translations that aren't used by the app anymore)
+        if let Some(existing) = data.get(locale) {
+            for (key, m) in existing {
+                if existing_trs.get(key).is_none() {
+                    trs.entry(key.clone())
+                        .or_default()
+                        .insert(locale.to_string(), m.to_string());
+                }
+            }
+        }
+    }
+
+    trs
 }
 
 fn generate_result<'a, P: AsRef<Path>>(
