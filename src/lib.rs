@@ -5,8 +5,9 @@ use std::{ops::Deref, sync::LazyLock};
 #[doc(hidden)]
 pub use rust_i18n_macro::{_minify_key, _tr, i18n};
 pub use rust_i18n_support::{
-    AtomicStr, Backend, BackendExt, CowStr, MinifyKey, SimpleBackend, DEFAULT_MINIFY_KEY,
-    DEFAULT_MINIFY_KEY_LEN, DEFAULT_MINIFY_KEY_PREFIX, DEFAULT_MINIFY_KEY_THRESH,
+    try_load_locales, AtomicStr, Backend, BackendExt, CowStr, MinifyKey, SimpleBackend,
+    DEFAULT_MINIFY_KEY, DEFAULT_MINIFY_KEY_LEN, DEFAULT_MINIFY_KEY_PREFIX,
+    DEFAULT_MINIFY_KEY_THRESH,
 };
 
 static CURRENT_LOCALE: LazyLock<AtomicStr> = LazyLock::new(|| AtomicStr::from("en"));

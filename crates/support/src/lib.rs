@@ -44,15 +44,31 @@ pub fn load_locales<F: Fn(&str) -> bool>(
     locales_path: &str,
     ignore_if: F,
 ) -> BTreeMap<String, BTreeMap<String, String>> {
+    match try_load_locales(locales_path, ignore_if, false) {
+        Ok(locales) => locales,
+        Err(error) => panic!("{}", error),
+    }
+}
+
+pub fn try_load_locales<F: Fn(&str) -> bool>(
+    locales_path: &str,
+    ignore_if: F,
+    report_file_lookup_errors: bool,
+) -> Result<BTreeMap<String, BTreeMap<String, String>>, String> {
     let mut result: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     let mut translations = BTreeMap::new();
+
     let locales_path = match Path::new(locales_path).normalize() {
         Ok(p) => p,
         Err(e) => {
             if is_debug() {
                 println!("cargo:i18n-error={}", e);
             }
-            return result;
+            return if report_file_lookup_errors {
+                Err(format!("Path '{locales_path}' cannot be normalized: '{e}'"))
+            } else {
+                Ok(result)
+            };
         }
     };
     let locales_path = match locales_path.as_path().to_str() {
@@ -61,7 +77,11 @@ pub fn load_locales<F: Fn(&str) -> bool>(
             if is_debug() {
                 println!("cargo:i18n-error=could not convert path");
             }
-            return result;
+            return if report_file_lookup_errors {
+                Err("Could not convert path.".to_string())
+            } else {
+                Ok(result)
+            };
         }
     };
 
@@ -76,10 +96,16 @@ pub fn load_locales<F: Fn(&str) -> bool>(
         if is_debug() {
             println!("cargo:i18n-error=path not exists: {}", locales_path);
         }
-        return result;
+        return if report_file_lookup_errors {
+            Err(format!("Path '{locales_path}' not found."))
+        } else {
+            Ok(result)
+        };
     }
 
-    for entry in globwalk::glob(&path_pattern).expect("Failed to read glob pattern") {
+    for entry in globwalk::glob(&path_pattern)
+        .map_err(|error| format!("Failed to read glob pattern: {error}"))?
+    {
         let entry = entry.unwrap().into_path();
         if is_debug() {
             println!("cargo:i18n-load={}", &entry.display());
@@ -97,16 +123,18 @@ pub fn load_locales<F: Fn(&str) -> bool>(
 
         let ext = entry.extension().and_then(|s| s.to_str()).unwrap();
 
-        let file = File::open(&entry).expect("Failed to open file");
+        let file = File::open(&entry)
+            .map_err(|error| format!("Failed to open file '{entry:?}': {error}"))?;
         let mut reader = std::io::BufReader::new(file);
         let mut content = String::new();
 
         reader
             .read_to_string(&mut content)
-            .expect("Read file failed.");
+            .map_err(|error| format!("Read file '{entry:?}' failed: {error}."))?;
 
-        let trs = parse_file(&content, ext, locale)
-            .unwrap_or_else(|e| panic!("Parse file `{}` failed, reason: {}", entry.display(), e));
+        let trs = parse_file(&content, ext, locale).map_err(|error| {
+            format!("Parse file `{}` failed, reason: {}", entry.display(), error)
+        })?;
 
         trs.into_iter().for_each(|(k, new_value)| {
             translations
@@ -120,7 +148,7 @@ pub fn load_locales<F: Fn(&str) -> bool>(
         result.insert(locale.to_string(), flatten_keys("", trs));
     });
 
-    result
+    Ok(result)
 }
 
 // Parse Translations from file to support multiple formats
