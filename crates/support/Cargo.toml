@@ -12,7 +12,6 @@ arc-swap.workspace = true
 base62.workspace = true
 globwalk.workspace = true
 itertools.workspace = true
-once_cell.workspace = true
 proc-macro2.workspace = true
 serde.workspace = true
 serde_json.workspace = true

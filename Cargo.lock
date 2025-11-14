@@ -2976,7 +2976,6 @@ dependencies = [
  "foo",
  "globwalk",
  "lazy_static",
- "once_cell",
  "regex",
  "rust-i18n-macro",
  "rust-i18n-support",
@@ -3017,7 +3016,6 @@ name = "rust-i18n-macro"
 version = "4.0.0-preview0"
 dependencies = [
  "glob",
- "once_cell",
  "proc-macro2",
  "quote",
  "rust-i18n",
@@ -3038,7 +3036,6 @@ dependencies = [
  "itertools 0.11.0",
  "lazy_static",
  "normpath",
- "once_cell",
  "proc-macro2",
  "regex",
  "serde",
