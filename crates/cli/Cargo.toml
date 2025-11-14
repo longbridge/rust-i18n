@@ -5,7 +5,7 @@ license = "MIT"
 name = "rust-i18n-cli"
 readme = "../../README.md"
 repository = "https://github.com/longbridge/rust-i18n"
-version = "3.1.4"
+version = "4.0.0-preview0"
 
 [dependencies]
 anyhow.workspace = true

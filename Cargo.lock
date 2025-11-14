@@ -223,7 +223,7 @@ checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
 name = "app-egui"
-version = "0.1.0"
+version = "4.0.0-preview0"
 dependencies = [
  "eframe",
  "env_logger",
@@ -233,21 +233,21 @@ dependencies = [
 
 [[package]]
 name = "app-load-path"
-version = "0.1.0"
+version = "4.0.0-preview0"
 dependencies = [
  "rust-i18n",
 ]
 
 [[package]]
 name = "app-metadata"
-version = "0.1.0"
+version = "4.0.0-preview0"
 dependencies = [
  "rust-i18n",
 ]
 
 [[package]]
 name = "app-minify-key"
-version = "0.1.0"
+version = "4.0.0-preview0"
 dependencies = [
  "env_logger",
  "log",
@@ -1454,7 +1454,7 @@ dependencies = [
 
 [[package]]
 name = "foo"
-version = "0.1.0"
+version = "4.0.0-preview0"
 dependencies = [
  "rust-i18n",
 ]
@@ -2970,7 +2970,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "rust-i18n"
-version = "3.1.5"
+version = "4.0.0-preview0"
 dependencies = [
  "criterion",
  "foo",
@@ -2986,7 +2986,7 @@ dependencies = [
 
 [[package]]
 name = "rust-i18n-cli"
-version = "3.1.4"
+version = "4.0.0-preview0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2996,7 +2996,7 @@ dependencies = [
 
 [[package]]
 name = "rust-i18n-extract"
-version = "3.1.4"
+version = "4.0.0-preview0"
 dependencies = [
  "anyhow",
  "ignore",
@@ -3014,7 +3014,7 @@ dependencies = [
 
 [[package]]
 name = "rust-i18n-macro"
-version = "3.1.5"
+version = "4.0.0-preview0"
 dependencies = [
  "glob",
  "once_cell",
@@ -3030,7 +3030,7 @@ dependencies = [
 
 [[package]]
 name = "rust-i18n-support"
-version = "3.1.5"
+version = "4.0.0-preview0"
 dependencies = [
  "arc-swap",
  "base62",
