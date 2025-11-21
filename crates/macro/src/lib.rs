@@ -271,15 +271,29 @@ fn generate_code(
     translations: BTreeMap<String, BTreeMap<String, String>>,
     args: Args,
 ) -> proc_macro2::TokenStream {
-    let mut all_translations = Vec::<proc_macro2::TokenStream>::new();
-
-    translations.iter().for_each(|(locale, trs)| {
-        trs.iter().for_each(|(k, v)| {
-            all_translations.push(quote! {
-                backend.add_translations(#locale, &std::collections::HashMap::from([(#k, #v)]));
-            });
-        });
+    let all_translations = translations.iter().map(|(locale, translation)| {
+        let translation_length = translation.len();
+        let translation = translation.iter().map(
+            |(k, v)| quote! { ::std::borrow::Cow::Borrowed(#k), ::std::borrow::Cow::Borrowed(#v) },
+        );
+        quote! {
+            ::std::borrow::Cow::Borrowed(#locale),
+            {
+                let mut map = std::collections::HashMap::with_capacity(#translation_length);
+                #(
+                    map.insert(#translation);
+                )*
+                map
+            }
+        }
     });
+    let all_translations = quote! {
+        let mut backend  = rust_i18n::SimpleBackend::new();
+
+        #(
+            backend.add_translations(#all_translations);
+        )*
+    };
 
     let default_locale = if let Some(default_locale) = args.default_locale {
         quote! {
@@ -325,8 +339,7 @@ fn generate_code(
         /// [PUBLIC] This is a public API, and as an example in examples/
         #[allow(missing_docs)]
         static _RUST_I18N_BACKEND: std::sync::LazyLock<Box<dyn rust_i18n::Backend>> = std::sync::LazyLock::new(|| {
-            let mut backend = rust_i18n::SimpleBackend::new();
-            #(#all_translations)*
+            #all_translations
             #extend_code
             #default_locale
 
