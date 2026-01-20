@@ -1,6 +1,6 @@
-use once_cell::sync::Lazy;
 use siphasher::sip128::SipHasher13;
 use std::borrow::Cow;
+use std::sync::LazyLock;
 
 /// The default value of `minify_key` feature.
 pub const DEFAULT_MINIFY_KEY: bool = false;
@@ -15,7 +15,7 @@ pub const DEFAULT_MINIFY_KEY_PREFIX: &str = "";
 pub const DEFAULT_MINIFY_KEY_THRESH: usize = 127;
 
 // The hasher for generate the literal translation key
-static TR_KEY_HASHER: Lazy<SipHasher13> = Lazy::new(SipHasher13::new);
+static TR_KEY_HASHER: LazyLock<SipHasher13> = LazyLock::new(SipHasher13::new);
 
 /// Calculate a 128-bit siphash of a value.
 pub fn hash128<T: AsRef<[u8]> + ?Sized>(value: &T) -> u128 {

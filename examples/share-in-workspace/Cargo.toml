@@ -1,4 +1,5 @@
 name = "sare-locales-in-workspace"
+publish = false
 
 [workspace]
 members = [

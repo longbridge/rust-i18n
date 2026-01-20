@@ -18,6 +18,10 @@ impl Backend for I18nBackend {
             val
         }
     }
+
+    fn messages_for_locale(&self, locale: &str) -> Option<Vec<(Cow<'_, str>, Cow<'_, str>)>> {
+        _RUST_I18N_BACKEND.messages_for_locale(locale)
+    }
 }
 
 #[macro_export]

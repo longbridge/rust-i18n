@@ -283,12 +283,17 @@ impl Backend for RemoteI18n {
         // For example load from database
         return self.trs.get(locale)?.get(key).map(|k| Cow::from(k.as_str()));
     }
+
+    fn messages_for_locale(&self, locale: &str) -> Option<Vec<(Cow<'_, str>, Cow<'_, str>)>> {
+        None
+    }
 }
 ```
 
 Now you can init rust_i18n by extend your own backend:
 
 ```rust,no_run
+# use std::borrow::Cow;
 # struct RemoteI18n;
 # impl RemoteI18n {
 #   fn new() -> Self { todo!() }
@@ -296,6 +301,7 @@ Now you can init rust_i18n by extend your own backend:
 # impl rust_i18n::Backend for RemoteI18n {
 #   fn available_locales(&self) -> Vec<std::borrow::Cow<'_, str>> { todo!() }
 #   fn translate(&self, locale: &str, key: &str) -> Option<std::borrow::Cow<'_, str>> { todo!() }
+    fn messages_for_locale(&self, locale: &str) -> Option<Vec<(Cow<'_, str>, Cow<'_, str>)>> { todo!() }
 # }
 rust_i18n::i18n!("locales", backend = RemoteI18n::new());
 ```
