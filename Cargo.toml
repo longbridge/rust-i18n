@@ -41,7 +41,7 @@ rust-i18n-macro = { path = "./crates/macro", version = "4.0.0-preview1" }
 rust-i18n-support = { path = "./crates/support", version = "4.0.0-preview1" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9.33"
+serde_yaml = { package = "yaml_serde", version = "0.10" }
 siphasher = "1.0"
 smallvec = "1.12.0"
 syn = { version = "2.0.18", features = ["full", "extra-traits"] }
