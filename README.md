@@ -451,11 +451,14 @@ The result `101 ns (0.0001 ms)` means if there have **10K** translate texts, it 
 
 ## Use Cases
 
-- [longbridge-terminal](https://github.com/longbridge/longbridge-terminal)
-- [topgrade](https://github.com/topgrade-rs/topgrade)
-- [trippy](https://github.com/fujiapple852/trippy)
-- [hyperswitch](https://github.com/juspay/hyperswitch)
-- [MirrorX](https://github.com/MirrorX-Desktop/MirrorX)
+Here are some most popular projects using `rust-i18n`:
+
+- [gpui-component](https://github.com/longbridge/gpui-component) - ~10K stars
+- [hyperswitch](https://github.com/juspay/hyperswitch) - 40K stars
+- [Seelen-UI](https://github.com/eythaann/Seelen-UI) - ~16K stars
+- [EasyTier](https://github.com/EasyTier/EasyTier) - ~10K stars
+- [trippy](https://github.com/fujiapple852/trippy) - 6.5K stars
+- [fresh](https://github.com/sinelaw/fresh) - 5.3K stars
 - [Clash Verge](https://github.com/clash-verge-rev/clash-verge-rev)
 - [tracker](https://github.com/ShenMian/tracker)
 
