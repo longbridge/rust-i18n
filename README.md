@@ -459,6 +459,8 @@ Here are some most popular projects using `rust-i18n`:
 - [EasyTier](https://github.com/EasyTier/EasyTier) - ~10K stars
 - [trippy](https://github.com/fujiapple852/trippy) - 6.5K stars
 - [fresh](https://github.com/sinelaw/fresh) - 5.3K stars
+- [Clash Verge](https://github.com/clash-verge-rev/clash-verge-rev)
+- [tracker](https://github.com/ShenMian/tracker)
 
 ## License
 
