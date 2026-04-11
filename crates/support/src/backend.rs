@@ -68,7 +68,29 @@ where
 /// Simple KeyValue storage backend
 pub struct SimpleBackend {
     /// All translations key is flatten key, like `en.hello.world`
-    translations: HashMap<String, HashMap<String, String>>,
+    translations: HashMap<Cow<'static, str>, HashMap<Cow<'static, str>, Cow<'static, str>>>,
+}
+
+impl
+    FromIterator<(
+        Cow<'static, str>,
+        HashMap<Cow<'static, str>, Cow<'static, str>>,
+    )> for SimpleBackend
+{
+    fn from_iter<
+        I: IntoIterator<
+            Item = (
+                Cow<'static, str>,
+                HashMap<Cow<'static, str>, Cow<'static, str>>,
+            ),
+        >,
+    >(
+        iter: I,
+    ) -> Self {
+        Self {
+            translations: iter.into_iter().collect(),
+        }
+    }
 }
 
 impl SimpleBackend {
@@ -85,17 +107,16 @@ impl SimpleBackend {
     /// # use std::collections::HashMap;
     /// # use rust_i18n_support::SimpleBackend;
     /// # let mut backend = SimpleBackend::new();
-    /// let mut trs = HashMap::<&str, &str>::new();
-    /// trs.insert("hello", "Hello");
-    /// trs.insert("foo", "Foo bar");
-    /// backend.add_translations("en", &trs);
+    /// let mut trs = HashMap::new();
+    /// trs.insert("hello".into(), "Hello".into());
+    /// trs.insert("foo".into(), "Foo bar".into());
+    /// backend.add_translations("en".into(), trs);
     /// ```
-    pub fn add_translations(&mut self, locale: &str, data: &HashMap<&str, &str>) {
-        let data = data
-            .iter()
-            .map(|(k, v)| ((*k).into(), (*v).into()))
-            .collect::<HashMap<_, _>>();
-
+    pub fn add_translations(
+        &mut self,
+        locale: Cow<'static, str>,
+        data: HashMap<Cow<'static, str>, Cow<'static, str>>,
+    ) {
         let trs = self.translations.entry(locale.into()).or_default();
         trs.extend(data);
     }
@@ -103,29 +124,23 @@ impl SimpleBackend {
 
 impl Backend for SimpleBackend {
     fn available_locales(&self) -> Vec<Cow<'_, str>> {
-        let mut locales = self
-            .translations
-            .keys()
-            .map(|k| Cow::from(k.as_str()))
-            .collect::<Vec<_>>();
+        let mut locales = self.translations.keys().cloned().collect::<Vec<_>>();
         locales.sort();
         locales
     }
 
     fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>> {
         if let Some(trs) = self.translations.get(locale) {
-            return trs.get(key).map(|s| Cow::from(s.as_str()));
+            return trs.get(key).cloned();
         }
 
         None
     }
 
     fn messages_for_locale(&self, locale: &str) -> Option<Vec<(Cow<'_, str>, Cow<'_, str>)>> {
-        self.translations.get(locale).map(|trs| {
-            trs.iter()
-                .map(|(k, v)| (Cow::from(k.as_str()), Cow::from(v.as_str())))
-                .collect()
-        })
+        self.translations
+            .get(locale)
+            .map(|trs| trs.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
     }
 }
 
@@ -148,15 +163,15 @@ mod tests {
     #[test]
     fn test_simple_backend() {
         let mut backend = SimpleBackend::new();
-        let mut data = HashMap::<&str, &str>::new();
-        data.insert("hello", "Hello");
-        data.insert("foo", "Foo bar");
-        backend.add_translations("en", &data);
+        let mut data = HashMap::new();
+        data.insert("hello".into(), "Hello".into());
+        data.insert("foo".into(), "Foo bar".into());
+        backend.add_translations("en".into(), data);
 
-        let mut data_cn = HashMap::<&str, &str>::new();
-        data_cn.insert("hello", "你好");
-        data_cn.insert("foo", "Foo 测试");
-        backend.add_translations("zh-CN", &data_cn);
+        let mut data_cn = HashMap::new();
+        data_cn.insert("hello".into(), "你好".into());
+        data_cn.insert("foo".into(), "Foo 测试".into());
+        backend.add_translations("zh-CN".into(), data_cn);
 
         assert_eq!(backend.translate("en", "hello"), Some(Cow::from("Hello")));
         assert_eq!(backend.translate("en", "foo"), Some(Cow::from("Foo bar")));
@@ -172,24 +187,24 @@ mod tests {
     #[test]
     fn test_combined_backend() {
         let mut backend = SimpleBackend::new();
-        let mut data = HashMap::<&str, &str>::new();
-        data.insert("hello", "Hello");
-        data.insert("foo", "Foo bar");
-        backend.add_translations("en", &data);
+        let mut data = HashMap::new();
+        data.insert("hello".into(), "Hello".into());
+        data.insert("foo".into(), "Foo bar".into());
+        backend.add_translations("en".into(), data);
 
-        let mut data_cn = HashMap::<&str, &str>::new();
-        data_cn.insert("hello", "你好");
-        data_cn.insert("foo", "Foo 测试");
-        backend.add_translations("zh-CN", &data_cn);
+        let mut data_cn = HashMap::new();
+        data_cn.insert("hello".into(), "你好".into());
+        data_cn.insert("foo".into(), "Foo 测试".into());
+        backend.add_translations("zh-CN".into(), data_cn);
 
         let mut backend2 = SimpleBackend::new();
-        let mut data2 = HashMap::<&str, &str>::new();
-        data2.insert("hello", "Hello2");
-        backend2.add_translations("en", &data2);
+        let mut data2 = HashMap::new();
+        data2.insert("hello".into(), "Hello2".into());
+        backend2.add_translations("en".into(), data2);
 
-        let mut data_cn2 = HashMap::<&str, &str>::new();
-        data_cn2.insert("hello", "你好2");
-        backend2.add_translations("zh-CN", &data_cn2);
+        let mut data_cn2 = HashMap::new();
+        data_cn2.insert("hello".into(), "你好2".into());
+        backend2.add_translations("zh-CN".into(), data_cn2);
 
         let combined = backend.extend(backend2);
         assert_eq!(combined.translate("en", "hello"), Some(Cow::from("Hello2")));
