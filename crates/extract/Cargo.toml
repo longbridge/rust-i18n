@@ -15,7 +15,7 @@ ignore.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 regex.workspace = true
-rust-i18n-support.workspace = true
+rust-i18n-support = { workspace = true, features = ["codegen"] }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

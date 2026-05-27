@@ -53,6 +53,10 @@ rust-i18n-support.workspace = true
 rust-i18n-macro.workspace = true
 smallvec.workspace = true
 
+[features]
+log-miss-tr = ["rust-i18n-macro/log-miss-tr"]
+load-path = ["rust-i18n-support/codegen"]
+
 [dev-dependencies]
 foo.workspace = true
 criterion.workspace = true
@@ -62,9 +66,6 @@ serde_yaml.workspace = true
 [build-dependencies]
 globwalk.workspace = true
 regex.workspace = true
-
-[features]
-log-miss-tr = ["rust-i18n-macro/log-miss-tr"]
 
 [[example]]
 name = "app"

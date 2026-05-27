@@ -10,7 +10,7 @@ version = "4.0.0"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-rust-i18n-support.workspace = true
+rust-i18n-support = { workspace = true, features = ["codegen"] }
 rust-i18n-extract.workspace = true
 
 [[bin]]
