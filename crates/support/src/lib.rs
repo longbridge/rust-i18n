@@ -1,31 +1,41 @@
-use normpath::PathExt;
-use std::fs::File;
-use std::io::prelude::*;
-use std::{collections::BTreeMap, path::Path};
-
 mod atomic_str;
 mod backend;
-mod config;
 mod cow_str;
 mod minify_key;
 pub use atomic_str::AtomicStr;
-pub use backend::{Backend, BackendExt, SimpleBackend};
-pub use config::I18nConfig;
+pub use backend::{Backend, BackendExt, CombinedBackend, SimpleBackend};
 pub use cow_str::CowStr;
 pub use minify_key::{
     minify_key, MinifyKey, DEFAULT_MINIFY_KEY, DEFAULT_MINIFY_KEY_LEN, DEFAULT_MINIFY_KEY_PREFIX,
     DEFAULT_MINIFY_KEY_THRESH,
 };
 
-type Locale = String;
-type Value = serde_json::Value;
-type Translations = BTreeMap<Locale, Value>;
+#[cfg(feature = "codegen")]
+mod config;
+#[cfg(feature = "codegen")]
+pub use config::I18nConfig;
 
 pub fn is_debug() -> bool {
     std::env::var("RUST_I18N_DEBUG").unwrap_or_else(|_| "0".to_string()) == "1"
 }
 
-/// Merge JSON Values, merge b into a
+#[cfg(feature = "codegen")]
+use normpath::PathExt;
+#[cfg(feature = "codegen")]
+use std::fs::File;
+#[cfg(feature = "codegen")]
+use std::io::prelude::*;
+#[cfg(feature = "codegen")]
+use std::{collections::BTreeMap, path::Path};
+
+#[cfg(feature = "codegen")]
+type Locale = String;
+#[cfg(feature = "codegen")]
+type Value = serde_json::Value;
+#[cfg(feature = "codegen")]
+type Translations = BTreeMap<Locale, Value>;
+
+#[cfg(feature = "codegen")]
 fn merge_value(a: &mut Value, b: &Value) {
     match (a, b) {
         (Value::Object(a), Value::Object(b)) => {
@@ -39,7 +49,7 @@ fn merge_value(a: &mut Value, b: &Value) {
     }
 }
 
-// Load locales into flatten key, value HashMap
+#[cfg(feature = "codegen")]
 pub fn load_locales<F: Fn(&str) -> bool>(
     locales_path: &str,
     ignore_if: F,
@@ -50,6 +60,7 @@ pub fn load_locales<F: Fn(&str) -> bool>(
     }
 }
 
+#[cfg(feature = "codegen")]
 pub fn try_load_locales<F: Fn(&str) -> bool>(
     locales_path: &str,
     ignore_if: F,
@@ -151,7 +162,7 @@ pub fn try_load_locales<F: Fn(&str) -> bool>(
     Ok(result)
 }
 
-// Parse Translations from file to support multiple formats
+#[cfg(feature = "codegen")]
 fn parse_file(content: &str, ext: &str, locale: &str) -> Result<Translations, String> {
     let result = match ext {
         "yml" | "yaml" => serde_yaml::from_str::<serde_json::Value>(content)
@@ -178,54 +189,19 @@ fn parse_file(content: &str, ext: &str, locale: &str) -> Result<Translations, St
     }
 }
 
-/// Locale file format v1
-///
-/// For example:
-/// ```yml
-/// welcome: Welcome
-/// foo: Foo bar
-/// ```
+#[cfg(feature = "codegen")]
 fn parse_file_v1(locale: &str, data: &serde_json::Value) -> Translations {
     Translations::from([(locale.to_string(), data.clone())])
 }
 
-/// Locale file format v2
-/// Iter all nested keys, if the value is not a object (Map<locale, string>), then convert into multiple locale translations
-///
-/// If the final value is Map<locale, string>, then convert them and insert into trs
-///
-/// For example (only support 1 level):
-///
-/// ```yml
-/// _version: 2
-/// welcome.first:
-///   en: Welcome
-///   zh-CN: 欢迎
-/// welcome1:
-///   en: Welcome 1
-///   zh-CN: 欢迎 1
-/// ```
-///
-/// into
-///
-/// ```yml
-/// en.welcome.first: Welcome
-/// zh-CN.welcome.first: 欢迎
-/// en.welcome1: Welcome 1
-/// zh-CN.welcome1: 欢迎 1
-/// ```
+#[cfg(feature = "codegen")]
 fn parse_file_v2(key_prefix: &str, data: &serde_json::Value) -> Option<Translations> {
     let mut trs = Translations::new();
 
     if let serde_json::Value::Object(messages) = data {
         for (key, value) in messages {
             if let serde_json::Value::Object(sub_messages) = value {
-                // If all values are string, then convert them into multiple locale translations
                 for (locale, text) in sub_messages {
-                    // Ignore if the locale is not a locale
-                    // e.g:
-                    //  en: Welcome
-                    //  zh-CN: 欢迎
                     if text.is_string() {
                         let key = format_keys(&[key_prefix, key]);
                         let sub_trs = BTreeMap::from([(key, text.clone())]);
@@ -238,11 +214,8 @@ fn parse_file_v2(key_prefix: &str, data: &serde_json::Value) -> Option<Translati
                     }
 
                     if text.is_object() {
-                        // Parse the nested keys
-                        // If the value is object (Map<locale, string>), iter them and convert them and insert into trs
                         let key = format_keys(&[key_prefix, key]);
                         if let Some(sub_trs) = parse_file_v2(&key, value) {
-                            // Merge the sub_trs into trs
                             for (locale, sub_value) in sub_trs {
                                 trs.entry(locale)
                                     .and_modify(|old_value| merge_value(old_value, &sub_value))
@@ -262,8 +235,7 @@ fn parse_file_v2(key_prefix: &str, data: &serde_json::Value) -> Option<Translati
     None
 }
 
-/// Get `_version` from JSON root
-/// If `_version` is not found, then return 1 as default.
+#[cfg(feature = "codegen")]
 fn get_version(data: &serde_json::Value) -> usize {
     if let Some(version) = data.get("_version") {
         return version.as_u64().unwrap_or(1) as usize;
@@ -272,7 +244,7 @@ fn get_version(data: &serde_json::Value) -> usize {
     1
 }
 
-/// Join the keys with dot, if any key is empty, omit it.
+#[cfg(feature = "codegen")]
 fn format_keys(keys: &[&str]) -> String {
     keys.iter()
         .filter(|k| !k.is_empty())
@@ -281,6 +253,7 @@ fn format_keys(keys: &[&str]) -> String {
         .join(".")
 }
 
+#[cfg(feature = "codegen")]
 fn flatten_keys(prefix: &str, trs: &Value) -> BTreeMap<String, String> {
     let mut v = BTreeMap::<String, String>::new();
     let prefix = prefix.to_string();
@@ -316,7 +289,7 @@ fn flatten_keys(prefix: &str, trs: &Value) -> BTreeMap<String, String> {
     v
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "codegen"))]
 mod tests {
     use super::{merge_value, parse_file};
 

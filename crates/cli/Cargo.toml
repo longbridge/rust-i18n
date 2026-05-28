@@ -5,12 +5,12 @@ license = "MIT"
 name = "rust-i18n-cli"
 readme = "../../README.md"
 repository = "https://github.com/longbridge/rust-i18n"
-version = "4.0.0"
+version = "4.1.0"
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-rust-i18n-support.workspace = true
+rust-i18n-support = { workspace = true, features = ["codegen"] }
 rust-i18n-extract.workspace = true
 
 [[bin]]

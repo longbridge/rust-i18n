@@ -22,6 +22,7 @@ The API of this crate is inspired by [ruby-i18n](https://github.com/ruby-i18n/i1
 - Support short hashed keys for optimize memory usage and lookup speed. (Since v3.1.0)
 - Support format variables in [`t!`], and support format variables with [`std::fmt`](https://doc.rust-lang.org/std/fmt/) syntax. (Since v3.1.0)
 - Support for log missing translations at the warning level with `log-miss-tr` feature, the feature requires the `log` crate. (Since v3.1.0)
+- `load-path` feature for runtime locale file loading via `try_load_locales`. By default, YAML/TOML parsing deps are compile-time only and not included in the binary.
 
 ## Usage
 

@@ -5,7 +5,7 @@ license = "MIT"
 name = "rust-i18n-extract"
 readme = "../../README.md"
 repository = "https://github.com/longbridge/rust-i18n"
-version = "4.0.0"
+version = "4.1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,7 +15,7 @@ ignore.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 regex.workspace = true
-rust-i18n-support.workspace = true
+rust-i18n-support = { workspace = true, features = ["codegen"] }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
