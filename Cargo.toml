@@ -62,6 +62,7 @@ foo.workspace = true
 criterion.workspace = true
 lazy_static.workspace = true
 serde_yaml.workspace = true
+rust-i18n-support = { path = "./crates/support", version = "4.1.0", features = ["codegen"] }
 
 [build-dependencies]
 globwalk.workspace = true
