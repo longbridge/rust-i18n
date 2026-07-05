@@ -30,7 +30,7 @@ Add crate dependencies in your Cargo.toml and setup I18n config:
 
 ```toml
 [dependencies]
-rust-i18n = "3"
+rust-i18n = "4"
 ```
 
 Load macro and init translations in `lib.rs` or `main.rs`:
@@ -391,7 +391,7 @@ Run `cargo i18n -h` to see details.
 
 ```bash
 $ cargo i18n -h
-cargo-i18n 3.1.0
+cargo-i18n 4.1.0
 ---------------------------------------
 Rust I18n command to help you extract all untranslated texts from source code.
 
