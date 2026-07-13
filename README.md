@@ -274,7 +274,7 @@ Inside `gpui_component`, the lookup remains unchanged:
 t!("Calendar.week.monday")
 ```
 
-The lookup order for each locale and key is equivalent to:
+The key lookup order inside is like this:
 
 ```rust,ignore
 app.translate(key)
