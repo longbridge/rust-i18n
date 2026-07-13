@@ -274,16 +274,11 @@ Inside `gpui_component`, the lookup remains unchanged:
 t!("Calendar.week.monday")
 ```
 
-Only the `gpui_component` namespace is visible to that dependency. Other keys in
-the application's backend are not registered with it or copied into it. See
-[`examples/extend-crate`](examples/extend-crate) for a complete example.
-
 The lookup order for each locale and key is equivalent to:
 
 ```rust,ignore
-application_namespace
-    .translate(locale, key)
-    .or_else(|| dependency.translate(locale, key))
+app.translate(key)
+    .or_else(|| gpui_component.translate(key))
 ```
 
 If both miss, the existing locale fallback rules continue as usual.
