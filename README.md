@@ -238,24 +238,48 @@ let locale = rust_i18n::locale();
 assert_eq!(&*locale, "zh-CN");
 ```
 
+### Extend a dependency's translations
+
+Applications can override or add translations for a dependency which has used rust-i18n while the
+dependency continues to use the regular [`t!`] macro. Call [`extend!`] once at
+startup with the dependency's Rust crate name:
+
+```rust,ignore
+fn main() {
+    rust_i18n::extend!(gpui_component);
+}
+```
+
+Translations for the dependency live below a namespace matching the Rust crate
+name passed to [`extend!`]. Cargo dependency aliases therefore use their custom
+**crate name** as the namespace:
+
+```yaml
+_version: 2
+gpui_component:
+  Calendar:
+    week:
+      monday:
+        zh-CN: 一
+```
+
+Inside `gpui_component`, the lookup remains unchanged:
+
+```rust,ignore
+t!("Calendar.week.monday")
+```
+
+Only the `gpui_component` namespace is visible to that dependency. Other keys in
+the application's backend are not registered with it or copied into it. See
+[`examples/extend-crate`](examples/extend-crate) for a complete example.
+
 ### Extend Backend
 
 Since v2.0.0 rust-i18n support extend backend for cusomize your translation implementation.
 
 For example, you can use HTTP API for load translations from remote server:
 
-```rust,no_run
-# pub mod reqwest {
-#  pub mod blocking {
-#    pub struct Response;
-#    impl Response {
-#       pub fn text(&self) -> Result<String, Box<dyn std::error::Error>> { todo!() }
-#    }
-#    pub fn get(_url: &str) -> Result<Response, Box<dyn std::error::Error>> { todo!() }
-#  }
-# }
-# use std::collections::HashMap;
-# use std::borrow::Cow;
+```rust,ignore
 use rust_i18n::Backend;
 
 pub struct RemoteI18n {
@@ -293,62 +317,13 @@ impl Backend for RemoteI18n {
 
 Now you can init rust_i18n by extend your own backend:
 
-```rust,no_run
-# use std::borrow::Cow;
-# struct RemoteI18n;
-# impl RemoteI18n {
-#   fn new() -> Self { todo!() }
-# }
-# impl rust_i18n::Backend for RemoteI18n {
-#   fn available_locales(&self) -> Vec<std::borrow::Cow<'_, str>> { todo!() }
-#   fn translate(&self, locale: &str, key: &str) -> Option<std::borrow::Cow<'_, str>> { todo!() }
-    fn messages_for_locale(&self, locale: &str) -> Option<Vec<(Cow<'_, str>, Cow<'_, str>)>> { todo!() }
-# }
+```rust,ignore
 rust_i18n::i18n!("locales", backend = RemoteI18n::new());
 ```
 
 This also will load local translates from ./locales path, but your own `RemoteI18n` will priority than it.
 
 Now you call [`t!`] will lookup translates from your own backend first, if not found, will lookup from local files.
-
-### Extend a dependency's translations
-
-Applications can override or add translations for a dependency while the
-dependency continues to use the regular [`t!`] macro. Call [`extend!`] once at
-startup with the dependency's Rust crate name:
-
-```rust,no_run
-# rust_i18n::i18n!();
-# mod ui_component {
-#     pub fn _rust_i18n_extend(_: &'static dyn rust_i18n::Backend, _: &'static str) {}
-# }
-# fn main() {
-rust_i18n::extend!(ui_component);
-# }
-```
-
-Translations for the dependency live below a namespace matching the Rust crate
-name passed to [`extend!`]. Cargo dependency aliases therefore use their custom
-crate name as the namespace:
-
-```yaml
-_version: 2
-ui_component:
-  Calendar:
-    week:
-      monday:
-        zh-CN: 一
-```
-
-Inside `ui_component`, the lookup remains unchanged:
-
-```rust,ignore
-t!("Calendar.week.monday")
-```
-
-Only the `ui_component` namespace is visible to that dependency. Other keys in
-the application's backend are not registered with it or copied into it. See
-[`examples/extend-crate`](examples/extend-crate) for a complete example.
 
 ## Example
 
