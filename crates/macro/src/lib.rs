@@ -332,7 +332,7 @@ fn generate_code(
     let minify_key_thresh = args.minify_key_thresh;
 
     quote! {
-        use rust_i18n::{BackendExt, CowStr, MinifyKey};
+        use rust_i18n::{Backend as _, BackendExt, CowStr, MinifyKey};
 
         /// I18n backend instance
         ///
@@ -345,6 +345,37 @@ fn generate_code(
 
             Box::new(backend)
         });
+
+        static _RUST_I18N_EXTENSION: std::sync::OnceLock<rust_i18n::NamespacedBackend> =
+            std::sync::OnceLock::new();
+
+        #[doc(hidden)]
+        #[allow(missing_docs)]
+        pub fn _rust_i18n_backend() -> &'static dyn rust_i18n::Backend {
+            _RUST_I18N_BACKEND.as_ref()
+        }
+
+        #[doc(hidden)]
+        #[allow(missing_docs)]
+        pub fn _rust_i18n_extend(
+            backend: &'static dyn rust_i18n::Backend,
+            namespace: &'static str,
+        ) {
+            let extension = rust_i18n::NamespacedBackend::new(backend, namespace);
+            assert!(
+                _RUST_I18N_EXTENSION.set(extension).is_ok(),
+                "rust-i18n backend for {} has already been extended",
+                namespace
+            );
+        }
+
+        #[inline]
+        fn _rust_i18n_backend_translate<'r>(locale: &str, key: &str) -> Option<std::borrow::Cow<'r, str>> {
+            _RUST_I18N_EXTENSION
+                .get()
+                .and_then(|backend| backend.translate(locale, key))
+                .or_else(|| _RUST_I18N_BACKEND.translate(locale, key))
+        }
 
         static _RUST_I18N_FALLBACK_LOCALE: Option<&[&'static str]> = #fallback;
         static _RUST_I18N_MINIFY_KEY: bool = #minify_key;
@@ -383,18 +414,18 @@ fn generate_code(
         #[doc(hidden)]
         #[allow(missing_docs)]
         pub fn _rust_i18n_try_translate<'r>(locale: &str, key: impl AsRef<str>) -> Option<std::borrow::Cow<'r, str>> {
-            _RUST_I18N_BACKEND.translate(locale, key.as_ref())
+            _rust_i18n_backend_translate(locale, key.as_ref())
                 .or_else(|| {
                     let mut current_locale = locale;
                     while let Some(fallback_locale) = _rust_i18n_lookup_fallback(current_locale) {
-                        if let Some(value) = _RUST_I18N_BACKEND.translate(fallback_locale, key.as_ref()) {
+                        if let Some(value) = _rust_i18n_backend_translate(fallback_locale, key.as_ref()) {
                             return Some(value);
                         }
                         current_locale = fallback_locale;
                     }
 
                     _RUST_I18N_FALLBACK_LOCALE.and_then(|fallback| {
-                        fallback.iter().find_map(|locale| _RUST_I18N_BACKEND.translate(locale, key.as_ref()))
+                        fallback.iter().find_map(|locale| _rust_i18n_backend_translate(locale, key.as_ref()))
                     })
                 })
         }
@@ -404,6 +435,13 @@ fn generate_code(
         #[allow(missing_docs)]
         pub fn _rust_i18n_available_locales() -> Vec<std::borrow::Cow<'static, str>> {
             let mut locales = _RUST_I18N_BACKEND.available_locales();
+            if let Some(extension) = _RUST_I18N_EXTENSION.get() {
+                for locale in extension.available_locales() {
+                    if !locales.contains(&locale) {
+                        locales.push(locale.into_owned().into());
+                    }
+                }
+            }
             locales.sort();
             locales
         }

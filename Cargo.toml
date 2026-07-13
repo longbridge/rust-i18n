@@ -82,6 +82,9 @@ members = [
     "examples/app-load-path",
     "examples/app-metadata",
     "examples/app-minify-key",
+    "examples/extend-crate/app",
+    "examples/extend-crate/app-default",
+    "examples/extend-crate/ui-component",
     "examples/foo",
 ]
 

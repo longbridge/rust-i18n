@@ -4,13 +4,13 @@ use std::{ops::Deref, sync::LazyLock};
 
 #[doc(hidden)]
 pub use rust_i18n_macro::{_minify_key, _tr, i18n};
+#[cfg(feature = "load-path")]
+pub use rust_i18n_support::try_load_locales;
 pub use rust_i18n_support::{
-    AtomicStr, Backend, BackendExt, CowStr, MinifyKey, SimpleBackend,
+    AtomicStr, Backend, BackendExt, CowStr, MinifyKey, NamespacedBackend, SimpleBackend,
     DEFAULT_MINIFY_KEY, DEFAULT_MINIFY_KEY_LEN, DEFAULT_MINIFY_KEY_PREFIX,
     DEFAULT_MINIFY_KEY_THRESH,
 };
-#[cfg(feature = "load-path")]
-pub use rust_i18n_support::try_load_locales;
 
 static CURRENT_LOCALE: LazyLock<AtomicStr> = LazyLock::new(|| AtomicStr::from("en"));
 
@@ -193,6 +193,28 @@ macro_rules! tkv {
 macro_rules! available_locales {
     () => {
         crate::_rust_i18n_available_locales()
+    };
+}
+
+/// Extend a dependency's translations with the matching crate namespace from
+/// the current crate's backend.
+///
+/// Given `extend!(ui_component)`, translations below the `ui_component` key in
+/// the current crate are lazily merged with translations in the `ui_component`
+/// crate. The extension takes priority for the same locale and key.
+///
+/// The lookup order for each locale and key is equivalent to:
+///
+/// ```rs, ignore
+/// app.translate(key)
+///     .or_else(|| ui_component.translate(key))
+/// ```
+///
+/// If both miss, the existing locale fallback rules continue as usual.
+#[macro_export]
+macro_rules! extend {
+    ($target:ident) => {
+        $target::_rust_i18n_extend(crate::_rust_i18n_backend(), stringify!($target))
     };
 }
 

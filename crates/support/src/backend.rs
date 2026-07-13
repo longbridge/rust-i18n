@@ -1,6 +1,52 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
+/// A view of another backend restricted to a single namespace.
+pub struct NamespacedBackend {
+    backend: &'static dyn Backend,
+    namespace: &'static str,
+}
+
+impl NamespacedBackend {
+    /// Create a backend that exposes only keys below `namespace`.
+    pub fn new(backend: &'static dyn Backend, namespace: &'static str) -> Self {
+        Self { backend, namespace }
+    }
+
+    fn namespaced_key(&self, key: &str) -> String {
+        format!("{}.{key}", self.namespace)
+    }
+}
+
+impl Backend for NamespacedBackend {
+    fn available_locales(&self) -> Vec<Cow<'_, str>> {
+        self.backend
+            .available_locales()
+            .into_iter()
+            .filter(|locale| self.messages_for_locale(locale).is_some())
+            .collect()
+    }
+
+    fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>> {
+        self.backend.translate(locale, &self.namespaced_key(key))
+    }
+
+    fn messages_for_locale(&self, locale: &str) -> Option<Vec<(Cow<'_, str>, Cow<'_, str>)>> {
+        let prefix = format!("{}.", self.namespace);
+        let messages = self
+            .backend
+            .messages_for_locale(locale)?
+            .into_iter()
+            .filter_map(|(key, value)| {
+                key.strip_prefix(&prefix)
+                    .map(|key| (Cow::Owned(key.to_string()), value))
+            })
+            .collect::<Vec<_>>();
+
+        (!messages.is_empty()).then_some(messages)
+    }
+}
+
 /// I18n backend trait
 pub trait Backend: Send + Sync + 'static {
     /// Return the available locales
@@ -158,7 +204,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::SimpleBackend;
-    use super::{Backend, BackendExt};
+    use super::{Backend, BackendExt, NamespacedBackend};
 
     #[test]
     fn test_simple_backend() {
@@ -214,5 +260,29 @@ mod tests {
         );
 
         assert_eq!(combined.available_locales(), vec!["en", "zh-CN"]);
+    }
+
+    #[test]
+    fn test_namespaced_backend() {
+        let mut backend = SimpleBackend::new();
+        let mut data = HashMap::new();
+        data.insert("ui_component.title".into(), "Custom title".into());
+        data.insert("title".into(), "Unrelated title".into());
+        backend.add_translations("en".into(), data);
+
+        let backend = Box::leak(Box::new(backend));
+        let namespaced = NamespacedBackend::new(backend, "ui_component");
+
+        assert_eq!(
+            namespaced.translate("en", "title"),
+            Some(Cow::Borrowed("Custom title"))
+        );
+        assert_eq!(
+            namespaced.messages_for_locale("en"),
+            Some(vec![(
+                Cow::Owned("title".to_string()),
+                Cow::Borrowed("Custom title")
+            )])
+        );
     }
 }

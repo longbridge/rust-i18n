@@ -238,24 +238,58 @@ let locale = rust_i18n::locale();
 assert_eq!(&*locale, "zh-CN");
 ```
 
+### Extend a crate's translations
+
+> Since: v4.1.0
+
+Applications can extend translations from a crate that uses rust-i18n
+while the dependency continues to use the regular [`t!`] macro. At lookup time,
+translations under the matching namespace are lazily merged with the
+dependency's translations: application values override the same locale and key,
+while translations omitted by the application continue to come from the
+dependency. Call [`extend!`] once at startup with the dependency's Rust crate name:
+
+```rust,ignore
+fn main() {
+    rust_i18n::extend!(gpui_component);
+}
+```
+
+Translations for the dependency live below a namespace matching the Rust crate
+name passed to [`extend!`]. Cargo dependency aliases therefore use their custom
+**crate name** as the namespace:
+
+```yaml
+_version: 2
+gpui_component:
+  Calendar:
+    week:
+      monday:
+        zh-CN: 一
+```
+
+Inside `gpui_component`, the lookup remains unchanged:
+
+```rust,ignore
+t!("Calendar.week.monday")
+```
+
+The key lookup order inside is like this:
+
+```rust,ignore
+app.translate(key)
+    .or_else(|| gpui_component.translate(key))
+```
+
+If both miss, the existing locale fallback rules continue as usual.
+
 ### Extend Backend
 
 Since v2.0.0 rust-i18n support extend backend for cusomize your translation implementation.
 
 For example, you can use HTTP API for load translations from remote server:
 
-```rust,no_run
-# pub mod reqwest {
-#  pub mod blocking {
-#    pub struct Response;
-#    impl Response {
-#       pub fn text(&self) -> Result<String, Box<dyn std::error::Error>> { todo!() }
-#    }
-#    pub fn get(_url: &str) -> Result<Response, Box<dyn std::error::Error>> { todo!() }
-#  }
-# }
-# use std::collections::HashMap;
-# use std::borrow::Cow;
+```rust,ignore
 use rust_i18n::Backend;
 
 pub struct RemoteI18n {
@@ -293,17 +327,7 @@ impl Backend for RemoteI18n {
 
 Now you can init rust_i18n by extend your own backend:
 
-```rust,no_run
-# use std::borrow::Cow;
-# struct RemoteI18n;
-# impl RemoteI18n {
-#   fn new() -> Self { todo!() }
-# }
-# impl rust_i18n::Backend for RemoteI18n {
-#   fn available_locales(&self) -> Vec<std::borrow::Cow<'_, str>> { todo!() }
-#   fn translate(&self, locale: &str, key: &str) -> Option<std::borrow::Cow<'_, str>> { todo!() }
-    fn messages_for_locale(&self, locale: &str) -> Option<Vec<(Cow<'_, str>, Cow<'_, str>)>> { todo!() }
-# }
+```rust,ignore
 rust_i18n::i18n!("locales", backend = RemoteI18n::new());
 ```
 

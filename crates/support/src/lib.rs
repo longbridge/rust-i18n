@@ -3,7 +3,7 @@ mod backend;
 mod cow_str;
 mod minify_key;
 pub use atomic_str::AtomicStr;
-pub use backend::{Backend, BackendExt, CombinedBackend, SimpleBackend};
+pub use backend::{Backend, BackendExt, CombinedBackend, NamespacedBackend, SimpleBackend};
 pub use cow_str::CowStr;
 pub use minify_key::{
     minify_key, MinifyKey, DEFAULT_MINIFY_KEY, DEFAULT_MINIFY_KEY_LEN, DEFAULT_MINIFY_KEY_PREFIX,
