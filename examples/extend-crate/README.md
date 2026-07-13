@@ -1,7 +1,8 @@
 # Extend a dependency's translations
 
-This example shows an application overriding translations from a dependency
-without changing the dependency's `t!` calls.
+This example shows an application extending translations missing from a
+dependency without changing the dependency's `t!` calls. Translations already
+provided by the dependency keep priority.
 
 The application attaches its backend to the dependency at startup:
 

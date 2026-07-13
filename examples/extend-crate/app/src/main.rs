@@ -19,6 +19,6 @@ mod tests {
         assert_eq!(my_component::description(), "Component description");
 
         rust_i18n::set_locale("en");
-        assert_eq!(my_component::title(), "Customized title");
+        assert_eq!(my_component::title(), "Component title");
     }
 }

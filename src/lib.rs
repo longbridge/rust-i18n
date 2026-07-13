@@ -200,7 +200,8 @@ macro_rules! available_locales {
 /// the current crate's backend.
 ///
 /// Given `extend!(ui_component)`, translations below the `ui_component` key in
-/// the current crate override translations in the `ui_component` crate.
+/// the current crate fill translations missing from the `ui_component` crate.
+/// Existing dependency translations keep priority.
 #[macro_export]
 macro_rules! extend {
     ($target:ident) => {

@@ -240,9 +240,10 @@ assert_eq!(&*locale, "zh-CN");
 
 ### Extend a dependency's translations
 
-Applications can override or add translations for a dependency which has used rust-i18n while the
-dependency continues to use the regular [`t!`] macro. Call [`extend!`] once at
-startup with the dependency's Rust crate name:
+Applications can add translations missing from a dependency that uses rust-i18n
+while the dependency continues to use the regular [`t!`] macro. Existing
+dependency translations keep priority. Call [`extend!`] once at startup with
+the dependency's Rust crate name:
 
 ```rust,ignore
 fn main() {
