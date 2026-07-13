@@ -238,9 +238,11 @@ let locale = rust_i18n::locale();
 assert_eq!(&*locale, "zh-CN");
 ```
 
-### Extend a dependency's translations
+### Extend a crate's translations
 
-Applications can extend translations from a dependency that uses rust-i18n
+> Since: v4.1.0
+
+Applications can extend translations from a crate that uses rust-i18n
 while the dependency continues to use the regular [`t!`] macro. At lookup time,
 translations under the matching namespace are lazily merged with the
 dependency's translations: application values override the same locale and key,
