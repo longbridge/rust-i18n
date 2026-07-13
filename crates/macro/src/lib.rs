@@ -332,7 +332,7 @@ fn generate_code(
     let minify_key_thresh = args.minify_key_thresh;
 
     quote! {
-        use rust_i18n::{Backend, BackendExt, CowStr, MinifyKey};
+        use rust_i18n::{Backend as _, BackendExt, CowStr, MinifyKey};
 
         /// I18n backend instance
         ///
