@@ -1,0 +1,9 @@
+[package]
+name = "extend-crate-default-app"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rust-i18n.workspace = true
+ui-component = { path = "../ui-component" }

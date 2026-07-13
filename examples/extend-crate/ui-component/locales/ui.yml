@@ -1,0 +1,6 @@
+_version: 2
+Widget:
+  title:
+    en: Component title
+  description:
+    en: Component description

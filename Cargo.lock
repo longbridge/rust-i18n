@@ -1419,6 +1419,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "extend-crate-app"
+version = "0.1.0"
+dependencies = [
+ "rust-i18n",
+ "ui-component",
+]
+
+[[package]]
+name = "extend-crate-default-app"
+version = "0.1.0"
+dependencies = [
+ "rust-i18n",
+ "ui-component",
+]
+
+[[package]]
 name = "fastrand"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3622,6 +3638,13 @@ dependencies = [
  "memoffset 0.9.1",
  "tempfile",
  "winapi",
+]
+
+[[package]]
+name = "ui-component"
+version = "0.1.0"
+dependencies = [
+ "rust-i18n",
 ]
 
 [[package]]

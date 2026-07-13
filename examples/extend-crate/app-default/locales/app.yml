@@ -1,0 +1,5 @@
+_version: 2
+ui_component:
+  Widget:
+    title:
+      zh-CN: 默认名称自定义标题

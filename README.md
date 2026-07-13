@@ -311,6 +311,45 @@ This also will load local translates from ./locales path, but your own `RemoteI1
 
 Now you call [`t!`] will lookup translates from your own backend first, if not found, will lookup from local files.
 
+### Extend a dependency's translations
+
+Applications can override or add translations for a dependency while the
+dependency continues to use the regular [`t!`] macro. Call [`extend!`] once at
+startup with the dependency's Rust crate name:
+
+```rust,no_run
+# rust_i18n::i18n!();
+# mod ui_component {
+#     pub fn _rust_i18n_extend(_: &'static dyn rust_i18n::Backend, _: &'static str) {}
+# }
+# fn main() {
+rust_i18n::extend!(ui_component);
+# }
+```
+
+Translations for the dependency live below a namespace matching the Rust crate
+name passed to [`extend!`]. Cargo dependency aliases therefore use their custom
+crate name as the namespace:
+
+```yaml
+_version: 2
+ui_component:
+  Calendar:
+    week:
+      monday:
+        zh-CN: 一
+```
+
+Inside `ui_component`, the lookup remains unchanged:
+
+```rust,ignore
+t!("Calendar.week.monday")
+```
+
+Only the `ui_component` namespace is visible to that dependency. Other keys in
+the application's backend are not registered with it or copied into it. See
+[`examples/extend-crate`](examples/extend-crate) for a complete example.
+
 ## Example
 
 A minimal example of using rust-i18n can be found [here](https://github.com/longbridge/rust-i18n/tree/main/examples).

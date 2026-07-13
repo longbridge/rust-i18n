@@ -1,0 +1,9 @@
+_version: 2
+Widget:
+  title:
+    en: Unrelated application title
+my_component:
+  Widget:
+    title:
+      en: Customized title
+      zh-CN: 自定义标题
