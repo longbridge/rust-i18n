@@ -205,9 +205,9 @@ macro_rules! available_locales {
 ///
 /// The lookup order for each locale and key is equivalent to:
 ///
-/// ```text
-/// application_namespace.translate(locale, key)
-///     .or_else(|| dependency.translate(locale, key))
+/// ```rs, ignore
+/// app.translate(key)
+///     .or_else(|| ui_component.translate(key))
 /// ```
 ///
 /// If both miss, the existing locale fallback rules continue as usual.
