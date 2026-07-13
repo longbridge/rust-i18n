@@ -240,7 +240,7 @@ assert_eq!(&*locale, "zh-CN");
 
 ### Extend a crate's translations
 
-> Since: v4.1.0
+> Since: v4.2.0
 
 Applications can extend translations from a crate that uses rust-i18n
 while the dependency continues to use the regular [`t!`] macro. At lookup time,
