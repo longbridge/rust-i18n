@@ -14,11 +14,11 @@ mod tests {
     fn extends_a_dependency_from_its_crate_namespace() {
         rust_i18n::extend!(my_component);
 
+        rust_i18n::set_locale("en");
+        assert_eq!(my_component::title(), "Customized title");
+
         rust_i18n::set_locale("zh-CN");
         assert_eq!(my_component::title(), "自定义标题");
         assert_eq!(my_component::description(), "Component description");
-
-        rust_i18n::set_locale("en");
-        assert_eq!(my_component::title(), "Component title");
     }
 }

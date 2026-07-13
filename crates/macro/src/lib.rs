@@ -371,11 +371,10 @@ fn generate_code(
 
         #[inline]
         fn _rust_i18n_backend_translate<'r>(locale: &str, key: &str) -> Option<std::borrow::Cow<'r, str>> {
-            _RUST_I18N_BACKEND.translate(locale, key).or_else(|| {
-                _RUST_I18N_EXTENSION
-                    .get()
-                    .and_then(|backend| backend.translate(locale, key))
-            })
+            _RUST_I18N_EXTENSION
+                .get()
+                .and_then(|backend| backend.translate(locale, key))
+                .or_else(|| _RUST_I18N_BACKEND.translate(locale, key))
         }
 
         static _RUST_I18N_FALLBACK_LOCALE: Option<&[&'static str]> = #fallback;

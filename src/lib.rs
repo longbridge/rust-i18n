@@ -200,8 +200,17 @@ macro_rules! available_locales {
 /// the current crate's backend.
 ///
 /// Given `extend!(ui_component)`, translations below the `ui_component` key in
-/// the current crate fill translations missing from the `ui_component` crate.
-/// Existing dependency translations keep priority.
+/// the current crate are lazily merged with translations in the `ui_component`
+/// crate. The extension takes priority for the same locale and key.
+///
+/// The lookup order for each locale and key is equivalent to:
+///
+/// ```text
+/// application_namespace.translate(locale, key)
+///     .or_else(|| dependency.translate(locale, key))
+/// ```
+///
+/// If both miss, the existing locale fallback rules continue as usual.
 #[macro_export]
 macro_rules! extend {
     ($target:ident) => {

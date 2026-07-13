@@ -240,10 +240,12 @@ assert_eq!(&*locale, "zh-CN");
 
 ### Extend a dependency's translations
 
-Applications can add translations missing from a dependency that uses rust-i18n
-while the dependency continues to use the regular [`t!`] macro. Existing
-dependency translations keep priority. Call [`extend!`] once at startup with
-the dependency's Rust crate name:
+Applications can extend translations from a dependency that uses rust-i18n
+while the dependency continues to use the regular [`t!`] macro. At lookup time,
+translations under the matching namespace are lazily merged with the
+dependency's translations: application values override the same locale and key,
+while translations omitted by the application continue to come from the
+dependency. Call [`extend!`] once at startup with the dependency's Rust crate name:
 
 ```rust,ignore
 fn main() {
@@ -273,6 +275,16 @@ t!("Calendar.week.monday")
 Only the `gpui_component` namespace is visible to that dependency. Other keys in
 the application's backend are not registered with it or copied into it. See
 [`examples/extend-crate`](examples/extend-crate) for a complete example.
+
+The lookup order for each locale and key is equivalent to:
+
+```rust,ignore
+application_namespace
+    .translate(locale, key)
+    .or_else(|| dependency.translate(locale, key))
+```
+
+If both miss, the existing locale fallback rules continue as usual.
 
 ### Extend Backend
 

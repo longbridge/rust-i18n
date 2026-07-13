@@ -14,6 +14,7 @@ mod tests {
     fn extends_a_dependency_from_its_default_crate_namespace() {
         rust_i18n::extend!(ui_component);
 
+        rust_i18n::set_locale("en");
         assert_eq!(ui_component::title(), "Component title");
 
         rust_i18n::set_locale("zh-CN");
