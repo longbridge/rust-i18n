@@ -249,7 +249,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rust-i18n"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "globwalk",
  "regex",
@@ -260,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "rust-i18n-macro"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "glob",
  "proc-macro2",
@@ -274,7 +274,7 @@ dependencies = [
 
 [[package]]
 name = "rust-i18n-support"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "arc-swap",
  "base62",

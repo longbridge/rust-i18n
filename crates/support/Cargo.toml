@@ -11,7 +11,7 @@ version = "4.2.0"
 codegen = [
     "dep:serde",
     "dep:serde_json",
-    "dep:serde_yaml",
+    "dep:serde-saphyr",
     "dep:toml",
     "dep:globwalk",
     "dep:normpath",
@@ -27,7 +27,7 @@ triomphe.workspace = true
 # codegen-only deps
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-serde_yaml = { workspace = true, optional = true }
+serde-saphyr = { workspace = true, optional = true }
 toml = { workspace = true, optional = true }
 globwalk = { workspace = true, optional = true }
 normpath = { workspace = true, optional = true }
