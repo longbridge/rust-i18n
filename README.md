@@ -482,10 +482,11 @@ Here are some most popular projects using `rust-i18n`:
 - [hyperswitch](https://github.com/juspay/hyperswitch) - 40K stars
 - [Seelen-UI](https://github.com/eythaann/Seelen-UI) - ~16K stars
 - [EasyTier](https://github.com/EasyTier/EasyTier) - ~10K stars
-- [trippy](https://github.com/fujiapple852/trippy) - 6.5K stars
-- [fresh](https://github.com/sinelaw/fresh) - 5.3K stars
-- [Clash Verge](https://github.com/clash-verge-rev/clash-verge-rev)
-- [tracker](https://github.com/ShenMian/tracker)
+- [clash-verge-rev](https://github.com/clash-verge-rev/clash-verge-rev)
+- [fujiapple852/trippy](https://github.com/fujiapple852/trippy)
+- [sinelaw/fresh](https://github.com/sinelaw/fresh)
+- [ShenMian/tracker](https://github.com/ShenMian/tracker)
+- [microsoft/intelligent-terminal](https://github.com/microsoft/intelligent-terminal)
 
 ## License
 
