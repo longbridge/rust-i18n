@@ -276,12 +276,14 @@ fn generate_code(
     // code size and compile time. Runtime backends keep their original path.
     let pair_count: usize = translations.values().map(BTreeMap::len).sum();
     let mut translations_by_key: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
-    for (locale, messages) in &translations {
-        for (key, value) in messages {
-            translations_by_key
-                .entry(key)
-                .or_default()
-                .push((locale, value));
+    if args.extend.is_none() && pair_count <= 256 {
+        for (locale, messages) in &translations {
+            for (key, value) in messages {
+                translations_by_key
+                    .entry(key)
+                    .or_default()
+                    .push((locale, value));
+            }
         }
     }
     let use_static_lookup = args.extend.is_none()
@@ -325,22 +327,78 @@ fn generate_code(
     };
 
     let all_translations = translations.iter().map(|(locale, translation)| {
-        let translation_length = translation.len();
-        let translation = translation.iter().map(
-            |(k, v)| quote! { ::std::borrow::Cow::Borrowed(#k), ::std::borrow::Cow::Borrowed(#v) },
-        );
-        quote! {
-            ::std::borrow::Cow::Borrowed(#locale),
-            {
-                let mut map = std::collections::HashMap::with_capacity(#translation_length);
-                #(
-                    map.insert(#translation);
-                )*
-                map
+        if use_static_lookup {
+            let translation_length = translation.len();
+            let entries = translation.iter().map(|(key, value)| {
+                quote! { ::std::borrow::Cow::Borrowed(#key), ::std::borrow::Cow::Borrowed(#value) }
+            });
+            quote! {
+                ::std::borrow::Cow::Borrowed(#locale),
+                {
+                    let mut map = std::collections::HashMap::with_capacity(#translation_length);
+                    #(
+                        map.insert(#entries);
+                    )*
+                    map
+                }
+            }
+        } else {
+            let packed = pack_translations(
+                translation
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.as_str())),
+            );
+            quote! {
+                ::std::borrow::Cow::Borrowed(#locale),
+                _rust_i18n_unpack_translations(#packed)
             }
         }
     });
+    let unpack = if use_static_lookup || translations.is_empty() {
+        quote! {}
+    } else {
+        // Keep the decoder in generated code; it needs no runtime crate API.
+        quote! {
+            fn _rust_i18n_unpack_translations(
+                packed: &'static str,
+            ) -> ::std::collections::HashMap<
+                ::std::borrow::Cow<'static, str>,
+                ::std::borrow::Cow<'static, str>,
+            > {
+                fn read_number(bytes: &[u8], cursor: &mut usize, terminator: u8) -> usize {
+                    let mut number = 0usize;
+                    while bytes[*cursor] != terminator {
+                        number = number * 10 + usize::from(bytes[*cursor] - b'0');
+                        *cursor += 1;
+                    }
+                    *cursor += 1;
+                    number
+                }
+
+                let bytes = packed.as_bytes();
+                let mut cursor = 0;
+                let count = read_number(bytes, &mut cursor, b';');
+                let mut translations = ::std::collections::HashMap::with_capacity(count);
+                for _ in 0..count {
+                    let key_len = read_number(bytes, &mut cursor, b',');
+                    let value_len = read_number(bytes, &mut cursor, b';');
+                    let key = &packed[cursor..cursor + key_len];
+                    cursor += key_len;
+                    let value = &packed[cursor..cursor + value_len];
+                    cursor += value_len;
+                    translations.insert(
+                        ::std::borrow::Cow::Borrowed(key),
+                        ::std::borrow::Cow::Borrowed(value),
+                    );
+                }
+                debug_assert_eq!(cursor, bytes.len());
+                translations
+            }
+        }
+    };
+
     let all_translations = quote! {
+        #unpack
         let mut backend  = rust_i18n::SimpleBackend::new();
 
         #(
@@ -524,6 +582,23 @@ fn generate_code(
         pub(crate) use __rust_i18n_t as _rust_i18n_t;
         pub(crate) use __rust_i18n_tkv as _rust_i18n_tkv;
     }
+}
+
+fn pack_translations<'a>(
+    translations: impl ExactSizeIterator<Item = (&'a str, &'a str)>,
+) -> String {
+    let mut packed = String::new();
+    packed.push_str(&translations.len().to_string());
+    packed.push(';');
+    for (key, value) in translations {
+        packed.push_str(&key.len().to_string());
+        packed.push(',');
+        packed.push_str(&value.len().to_string());
+        packed.push(';');
+        packed.push_str(key);
+        packed.push_str(value);
+    }
+    packed
 }
 
 /// A procedural macro that generates a translation key from a value.
