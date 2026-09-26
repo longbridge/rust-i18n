@@ -87,11 +87,36 @@ def export_head(source, archive_path, revision):
 
 
 def scanner_source(variant, production, arch, scanner_dir):
-    preamble, marker, production_tests = production.partition("#[cfg(test)]")
+    _, marker, production_tests = production.partition("#[cfg(test)]")
     if not marker:
         raise RuntimeError("Production scanner tests marker not found")
     if variant == "current":
-        replacement = preamble
+        # The production scanner is now scalar. Retain the former thresholded
+        # architecture scanner as an explicit legacy comparison variant.
+        replacement = """#[cfg(target_arch = "aarch64")]
+mod aarch64;
+#[cfg(target_arch = "x86_64")]
+mod x86_64;
+
+/// Legacy architecture scanner, retained for the controlled comparison.
+pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
+    if bytes.len() < 256 {
+        return bytes.iter().position(|&byte| byte == b'%');
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        x86_64::find_percent(bytes)
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        aarch64::find_percent(bytes)
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    bytes.iter().position(|&byte| byte == b'%')
+}
+
+"""
     elif variant == "scalar":
         replacement = """/// Find the first percent byte using the scalar Rust iterator.
 pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
@@ -104,9 +129,7 @@ pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
         candidate = scanner_dir / arch / source_name
         if not candidate.is_file():
             raise RuntimeError(f"Missing {candidate}")
-        replacement = """mod candidate;
-
-/// Use the common scalar path for short translations.
+        replacement = f'#[path = "{arch}/{source_name}"]\nmod candidate;\n\n' + """/// Use the common scalar path for short translations.
 pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
     if bytes.len() < 256 {
         bytes.iter().position(|&byte| byte == b'%')
@@ -130,7 +153,15 @@ pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
     else:
         raise ValueError(variant)
     scanner_tests = (scanner_dir / "scan_tests.rs").read_text()
-    return replacement + marker + production_tests + "\n" + scanner_tests + "\n"
+    return (
+        "pub(crate) mod interpolate;\n\n"
+        + replacement
+        + marker
+        + production_tests
+        + "\n"
+        + scanner_tests
+        + "\n"
+    )
 
 
 def prepare_variant(source, variant, arch):
@@ -158,10 +189,15 @@ def prepare_variant(source, variant, arch):
     if variant in ("intrinsics", "simd_asm"):
         candidate_dir = scanner_dir / arch
         candidate_name = "scan_intrinsics.rs" if variant == "intrinsics" else "scan_simd.rs"
-        shutil.copy2(candidate_dir / candidate_name, source / "src/asm/candidate.rs")
+        exported_candidate_dir = source / "src/asm" / arch
+        exported_candidate_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(candidate_dir / candidate_name, exported_candidate_dir / candidate_name)
         if variant == "simd_asm":
-            for sibling in candidate_dir.glob("*.asm"):
-                shutil.copy2(sibling, source / "src/asm" / sibling.name)
+            fragments = ROOT / "src/asm" / arch
+            exported_fragments = source / "src/asm" / arch
+            exported_fragments.mkdir(parents=True, exist_ok=True)
+            for sibling in fragments.glob("*.asm"):
+                shutil.copy2(sibling, exported_fragments / sibling.name)
 
 
 def lock_digest(source):
@@ -252,7 +288,7 @@ def report(revision, arch, selected, measurements, lock_hash, sizes=None):
                 continue
             lines.extend([
                 "",
-                f"## Production ASM versus {reference}",
+                f"## Legacy scanner ASM versus {reference}",
                 "",
                 "| Full `t!` case | Before (ns) | After (ns) | Speedup |",
                 "| --- | ---: | ---: | ---: |",
@@ -299,6 +335,9 @@ def report(revision, arch, selected, measurements, lock_hash, sizes=None):
             "outputs for `en Jason` matched.",
         ])
     lines.extend([
+        "",
+        "The `current` variant is the legacy thresholded architecture scanner; "
+        "the production default is scalar.",
         "",
         "All variants retain the same production runtime outside the scanner, "
         "with a common scalar path below 256 bytes except the all-scalar control. "

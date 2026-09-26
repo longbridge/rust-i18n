@@ -17,10 +17,14 @@ comments. They require no separate assembler or linker step.
 
 ## Scanner variants
 
+The CLI key `current` denotes the retained legacy ASM scanner for compatibility.
+The production fallback scanner now uses scalar Rust. All instruction sources
+live in `src/asm/`; Rust wrappers and dispatch live in `src/interpolation/`.
+
 | Variant | Scan used for slices of at least 256 bytes |
 | --- | --- |
 | Rust scalar | Byte iterator search in ordinary Rust. |
-| Current ASM | The PR's architecture-specific scanner (`repne scasb` on x86-64; 16-byte NEON blocks on AArch64). |
+| Legacy ASM | The retained architecture-specific scanner (`repne scasb` on x86-64; 16-byte NEON blocks on AArch64). |
 | Matched SIMD intrinsics | SSE2 or runtime-detected AVX2 on x86-64; NEON on AArch64. |
 | Matched SIMD ASM | The same block widths, dispatch, match test, and scalar tail as the intrinsics variant, with the vector instructions in `.asm` fragments. |
 | `memchr` | The `memchr` crate's byte search; the dependency is present in every overlay for a matched build. |
@@ -28,8 +32,8 @@ comments. They require no separate assembler or linker step.
 All five variants keep the same ordinary Rust scan for slices shorter than
 256 bytes. The matched SIMD pair lets us compare the language used to express
 the *same algorithm*. The scalar and `memchr` variants provide practical
-alternatives; comparing either with current ASM does not by itself isolate an
-"ASM language" effect. On AArch64, current ASM may be the same algorithm as
+alternatives; comparing either with legacy ASM does not by itself isolate an
+"ASM language" effect. On AArch64, legacy ASM may be the same algorithm as
 matched SIMD ASM, so their results should be interpreted accordingly.
 
 ## Measurements and interpretation
@@ -52,7 +56,7 @@ report.
 
 For each measured case, calculate both:
 
-* **Current ASM vs Rust scalar:** scalar time divided by current ASM time.
+* **Legacy ASM vs Rust scalar:** scalar time divided by legacy ASM time.
   This is the end-to-end effect of changing the scan implementation relative
   to a simple Rust scanner.
 * **Matched SIMD ASM vs matched SIMD intrinsics:** intrinsics time divided by
@@ -67,7 +71,7 @@ binary. Only native runs establish runtime performance for that CPU.
 ## Whole interpolation kernel
 
 Run `python3 scripts/benchmark-core-asm.py` to compare the Rust interpolation
-path with the optional assembly kernel in `src/asm/interpolate.rs` and its
+path with the optional safe adapter in `src/interpolation/interpolate.rs` and its
 architecture-specific files. Both overlays use the same Rust locale lookup,
 macro expansion, benchmark inputs, and scalar `%` scanner. The script changes
 only the interpolation path in one overlay, then runs shared correctness tests

@@ -56,7 +56,7 @@ pub fn replace_patterns_cow(
     patterns: &[&str],
     values: &[std::borrow::Cow<'_, str>],
 ) -> String {
-    replace_patterns_impl(input, patterns, values)
+    asm::interpolate::replace_patterns_cow(input, patterns, values)
 }
 
 fn replace_patterns_impl<V: AsRef<str>>(input: &str, patterns: &[&str], values: &[V]) -> String {

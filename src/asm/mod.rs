@@ -1,24 +1,8 @@
-#[cfg(target_arch = "aarch64")]
-mod aarch64;
-#[cfg(target_arch = "x86_64")]
-mod x86_64;
+// The full interpolation kernel has its own safe adapter. Rejected input uses
+// the portable scanner below instead of the CPU-sensitive legacy REPNE scan.
+pub(crate) mod interpolate;
 
-/// Returns the index of the first percent byte in `bytes`.
 pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
-    // Short messages are common in translations. Avoid assembly setup for them.
-    if bytes.len() < 256 {
-        return bytes.iter().position(|&byte| byte == b'%');
-    }
-
-    #[cfg(target_arch = "x86_64")]
-    {
-        x86_64::find_percent(bytes)
-    }
-    #[cfg(target_arch = "aarch64")]
-    {
-        aarch64::find_percent(bytes)
-    }
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
     bytes.iter().position(|&byte| byte == b'%')
 }
 

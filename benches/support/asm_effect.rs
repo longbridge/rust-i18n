@@ -13,6 +13,8 @@ rust_i18n::i18n!("./benches/fixtures/asm");
 fn bench_full_t(c: &mut Criterion) {
     rust_i18n::set_locale("en");
     let name = String::from("Jason");
+    let large_value = "界".repeat(512);
+    let repeated_value = "r".repeat(80);
 
     // These assertions run before any timing loop. A missing translation would
     // otherwise benchmark the miss path instead of the intended string shape.
@@ -35,6 +37,37 @@ fn bench_full_t(c: &mut Criterion) {
     assert_eq!(
         t!("unicode_long", name = "Jason", place = "world"),
         format!("{}Jason{}world", "你".repeat(512), "界".repeat(512))
+    );
+    assert_eq!(
+        t!("literal_percent", name = "Jason"),
+        "Hello Jason! 100% ready"
+    );
+    assert_eq!(
+        t!("unfinished", name = "Jason"),
+        format!("{}Jason %{{unfinished", "a".repeat(2048))
+    );
+    assert_eq!(
+        t!(
+            "nine_args",
+            a = "A",
+            b = "B",
+            c = "C",
+            d = "D",
+            e = "E",
+            f = "F",
+            g = "G",
+            h = "H",
+            i = "I"
+        ),
+        "A B C D E F G H I"
+    );
+    assert_eq!(
+        t!("large_value", name = large_value.as_str()),
+        format!("before {large_value} after")
+    );
+    assert_eq!(
+        t!("repeated_growth", name = repeated_value.as_str()),
+        repeated_value.repeat(4)
     );
 
     c.bench_function("asm_effect_plain", |b| b.iter(|| t!("plain")));
@@ -61,6 +94,40 @@ fn bench_full_t(c: &mut Criterion) {
     });
     c.bench_function("asm_effect_unicode_long", |b| {
         b.iter(|| t!("unicode_long", name = "Jason", place = "world"))
+    });
+    c.bench_function("asm_effect_literal_percent", |b| {
+        b.iter(|| t!("literal_percent", name = "Jason"))
+    });
+    c.bench_function("asm_effect_unfinished", |b| {
+        b.iter(|| t!("unfinished", name = "Jason"))
+    });
+    c.bench_function("asm_effect_nine_args", |b| {
+        b.iter(|| {
+            t!(
+                "nine_args",
+                a = "A",
+                b = "B",
+                c = "C",
+                d = "D",
+                e = "E",
+                f = "F",
+                g = "G",
+                h = "H",
+                i = "I"
+            )
+        })
+    });
+    c.bench_function("asm_effect_large_value", |b| {
+        b.iter(|| {
+            let name = black_box(large_value.as_str());
+            t!("large_value", name = name)
+        })
+    });
+    c.bench_function("asm_effect_repeated_growth", |b| {
+        b.iter(|| {
+            let name = black_box(repeated_value.as_str());
+            t!("repeated_growth", name = name)
+        })
     });
 }
 

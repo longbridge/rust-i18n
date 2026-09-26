@@ -41,6 +41,11 @@ LONG_CASES = (
     "asm_effect_long_no_marker",
     "asm_effect_long_dense",
     "asm_effect_unicode_long",
+    "asm_effect_literal_percent",
+    "asm_effect_unfinished",
+    "asm_effect_nine_args",
+    "asm_effect_large_value",
+    "asm_effect_repeated_growth",
 )
 ALL_CASES = CORE_CASES + DIRECT_CASES + LONG_CASES
 BENCHMARK_INPUTS = (
@@ -58,6 +63,16 @@ def run(command, *, cwd=ROOT, env=None, stdout=None):
 
 def capture(command):
     return subprocess.check_output(command, cwd=ROOT, text=True).strip()
+
+
+def head_file(revision, relative):
+    result = subprocess.run(
+        ["git", "show", f"{revision}:{relative}"],
+        cwd=ROOT, capture_output=True, check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"HEAD must contain {relative}; commit the interpolation migration first")
+    return result.stdout.decode()
 
 
 def arch():
@@ -129,18 +144,29 @@ def scalar_scanner(production):
     )
 
 
+def normalize_cow_lib(production):
+    """Force the optimized Rust Cow entry regardless of HEAD's default route."""
+    rust_call = "replace_patterns_impl(input, patterns, values)"
+    production_call = "asm::interpolate::replace_patterns_cow(input, patterns, values)"
+    suffix = "\n}\n\nfn replace_patterns_impl"
+    matches = [call for call in (rust_call, production_call) if production.count("    " + call + suffix) == 1]
+    if len(matches) != 1:
+        raise RuntimeError("Cow entry must call exactly one recognized Rust or production ASM route")
+    return production.replace("    " + matches[0] + suffix, "    " + rust_call + suffix, 1)
+
+
 def candidate_lib(production):
+    production = normalize_cow_lib(production)
     if production.count("mod asm;\n") != 1:
-        raise RuntimeError("Expected one scanner module declaration in src/lib.rs")
+        raise RuntimeError("Expected one interpolation module declaration in src/lib.rs")
     production = production.replace(
-        "mod asm;\n", "mod asm;\n#[path = \"asm/interpolate.rs\"]\nmod core_asm_runtime;\n", 1
+        "mod asm;\n",
+        "mod asm;\n#[path = \"asm/interpolate.rs\"]\nmod core_asm_runtime;\n",
+        1,
     )
-    original = (
-        "    replace_patterns_impl(input, patterns, values)\n"
-        "}\n\nfn replace_patterns_impl"
-    )
+    original = "    replace_patterns_impl(input, patterns, values)\n}\n\nfn replace_patterns_impl"
     if production.count(original) != 1:
-        raise RuntimeError("Could not identify Cow interpolation body in src/lib.rs")
+        raise RuntimeError("Normalized Cow entry not found in src/lib.rs")
     hooked = production.replace(
         original,
         "    core_asm_runtime::replace_patterns_cow(input, patterns, values)\n"
@@ -155,10 +181,13 @@ def candidate_lib(production):
 
 def prepare(source, variant, architecture, revision):
     # Regenerate only changed files on --resume, preserving incremental builds.
-    head_lib = subprocess.check_output(["git", "show", f"{revision}:src/lib.rs"], cwd=ROOT).decode()
-    head_scanner = subprocess.check_output(["git", "show", f"{revision}:src/asm/mod.rs"], cwd=ROOT).decode()
+    head_lib = head_file(revision, "src/lib.rs")
+    head_scanner = head_file(revision, "src/asm/mod.rs")
     write_if_changed(source / "src/asm/mod.rs", scalar_scanner(head_scanner))
-    write_if_changed(source / "src/lib.rs", candidate_lib(head_lib) if variant == "asm" else head_lib)
+    write_if_changed(
+        source / "src/lib.rs",
+        candidate_lib(head_lib) if variant == "asm" else normalize_cow_lib(head_lib),
+    )
 
     for source_file, relative in (
         (ROOT / "benches/bench.rs", "benches/bench.rs"),
@@ -181,12 +210,15 @@ def prepare(source, variant, architecture, revision):
             ("interpolate.rs", "src/asm/interpolate.rs"),
             ("interpolation_tests.rs", "src/asm/interpolation_tests.rs"),
             (f"{architecture}/interpolate.rs", f"src/asm/{architecture}/interpolate.rs"),
-            (f"{architecture}/interpolate.asm", f"src/asm/{architecture}/interpolate.asm"),
         ):
             path = candidate / name
             if not path.is_file():
                 raise RuntimeError(f"Missing core ASM candidate: {path}")
             copy_if_changed(path, source / destination)
+        assembly = ROOT / "src/asm" / architecture / "interpolate.asm"
+        if not assembly.is_file():
+            raise RuntimeError(f"Missing core ASM candidate: {assembly}")
+        copy_if_changed(assembly, source / "src/asm" / architecture / "interpolate.asm")
 
 
 def lock_hash(source):
@@ -294,7 +326,7 @@ def report(revision, architecture, cases, measurements, digest, overlays, debug,
     for title, group in (
         ("Ordinary translation calls", CORE_CASES),
         ("Direct replacement controls", DIRECT_CASES),
-        ("Long translation calls", LONG_CASES),
+        ("Additional translation and fallback calls", LONG_CASES),
     ):
         shown = [case for case in group if case in cases]
         if not shown:
@@ -363,6 +395,10 @@ def main():
         parser.error("--filter matched no benchmark cases")
     architecture = arch()
     revision = capture(["git", "rev-parse", "HEAD"])
+    head_lib = head_file(revision, "src/lib.rs")
+    head_file(revision, "src/asm/mod.rs")
+    if head_lib.count("mod asm;\n") != 1:
+        raise RuntimeError("HEAD must have the migrated interpolation module; commit the migration first")
     run(["cargo", "fetch", "--locked"], cwd=ROOT)
     base = ROOT / "target/core-asm-comparison"
     resume_path = None
