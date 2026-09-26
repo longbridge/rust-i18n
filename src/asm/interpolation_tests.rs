@@ -100,10 +100,14 @@ fn malformed_markers_and_literal_percent_use_rust_fallback() {
         "%{a} then %",
         "%{a} then %{unfinished",
     ] {
-        assert!(
-            try_replace_patterns_cow(input, &["a", "x"], &values).is_none(),
-            "malformed input unexpectedly used kernel: {input:?}"
-        );
+        // The kernels treat stray and unfinished percent signs as literal
+        // text, like the legacy parser; see `kernel_treats_*` below.
+        if input == "%{a%{x}" {
+            assert!(
+                try_replace_patterns_cow(input, &["a", "x"], &values).is_none(),
+                "malformed input unexpectedly used kernel: {input:?}"
+            );
+        }
         assert_matches_rust(input, &["a", "x"], &values);
     }
 }
@@ -270,5 +274,61 @@ fn random_inputs_match_legacy() {
         // either the kernel or its fallback.
         assert!(kernel_runs > 2_000, "kernel ran only {kernel_runs} times");
         assert!(fallbacks > 2_000, "fallback ran only {fallbacks} times");
+    }
+}
+
+#[test]
+fn kernel_treats_stray_and_unfinished_percent_as_literal() {
+    let values = [Cow::Borrowed("A"), Cow::Borrowed("X")];
+    let long = "a".repeat(2048);
+    let long_unfinished = format!("{long}%{{a}} %{{unfinished");
+    let long_stray = format!("%{{a}} 100% {long} %{{x}} 50%");
+    let unfinished_tail = format!("%{{a}} %{{{long}");
+    let stray_run = format!("% {long}%{{a}}");
+    for input in [
+        "%",
+        "%%",
+        "%{",
+        "%}",
+        "%{a",
+        "%%{a}",
+        "literal % text",
+        "Hello %{a}! 100% ready",
+        "%{a} then %",
+        "%{a} then %{unfinished",
+        "%{a} then %{unfinished}}",
+        "50% } %{x}",
+        "{%}%{a}{",
+        long_unfinished.as_str(),
+        long_stray.as_str(),
+        unfinished_tail.as_str(),
+        stray_run.as_str(),
+    ] {
+        assert_kernel_used(input, &["a", "x"], &values);
+    }
+    // A brace after a stray percent sign opens a legacy marker at the brace.
+    for input in ["100% a{a}", "% {a}", "%}{a}", "%{a%}", "%{a} % x{"] {
+        assert!(
+            try_replace_patterns_cow(input, &["a", "x"], &values).is_none(),
+            "kernel accepted legacy brace marker: {input:?}"
+        );
+        assert_matches_rust(input, &["a", "x"], &values);
+    }
+}
+
+#[test]
+fn stray_percent_runs_across_block_boundaries_match_legacy() {
+    let values = [Cow::Borrowed("A")];
+    for prefix in 0..20 {
+        for len in 0..48 {
+            let lead = "p".repeat(prefix);
+            let run = "x".repeat(len);
+            for tail in ["", "{a}", "%{a}", "}", "%", "%{", "%{a", "}{a}"] {
+                let input = format!("{lead}%{run}{tail}");
+                assert_matches_rust(&input, &["a"], &values);
+                let input = format!("{lead}%{{a{run}{tail}");
+                assert_matches_rust(&input, &["a"], &values);
+            }
+        }
     }
 }

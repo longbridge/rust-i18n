@@ -44,13 +44,19 @@ so it lives in `benches/support/scan_intrinsics.rs`.
 
 `rust_i18n::replace_patterns_cow`, which `t!` calls when it has arguments,
 goes through `asm::interpolate::replace_patterns_cow` on 64-bit x86_64 and
-AArch64. The adapter prepares at most eight key/value descriptors and an
-output buffer of `input.len() + 128` bytes. The kernel scans literal text,
-parses complete `%{key}` markers, matches keys in argument order, and copies
-the output. It rejects malformed markers, literal `%`, more than eight
-arguments, and output that would exceed the buffer. Rejected input goes to the
-Rust parser (`replace_patterns_impl`), so results never differ. Partial output
-is never published. Other targets always use Rust.
+AArch64. The adapter builds up to sixteen key/value descriptors on the stack
+and an output buffer of `input.len()` plus the larger of 128 bytes and the
+longest value. The kernel scans literal text, parses `%{key}` markers, matches
+keys in argument order, and copies the output.
+
+The kernel returns the bytes written and the input bytes consumed. When the
+output fills, it stops at literal text or at a marker's `%`; the adapter grows
+the buffer (projecting the expansion seen so far) and calls it again on the
+rest. A `%` that is not followed by `{`, and a final `%{` without a `}`, are
+copied as literal text, as the Rust parser does. The kernel rejects only a `%`
+inside a marker and a stray `%` whose run reaches a `{`; rejected input and
+more than sixteen arguments go to the original Rust parser, so results never
+differ. Partial output is never published. Other targets always use Rust.
 
 `replace_patterns` (with `String` values) and the percent scanner
 `find_percent` use plain Rust. The scanners declared in `scan.rs` are used only

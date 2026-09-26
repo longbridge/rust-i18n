@@ -11,12 +11,17 @@
 // Returns rax = bytes written, rdx = input bytes consumed.
 //   consumed == input_len: complete; the output is the whole interpolation.
 //   consumed <  input_len: the output is full. The unconsumed input starts
-//                          at literal text or at a marker percent sign, so
-//                          the caller may grow the output and call again.
-//   rax == usize::MAX:     rejected (stray, nested or unfinished percent);
-//                          the caller discards the output and uses Rust.
+//                          at literal text or at a percent sign, so the
+//                          caller may grow the output and call again.
+//   rax == usize::MAX:     rejected: a percent sign inside a marker, or a
+//                          stray percent sign followed by an opening brace
+//                          before the next percent sign. The caller
+//                          discards the output and uses the legacy parser.
+// Other input follows the legacy parser: a stray percent sign and an
+// unfinished final marker (percent, opening brace, and no closing brace or
+// percent sign before the end) are literal text.
 // Saves and restores r12-r15; clobbers rax, rcx, rdx, rsi, rdi, r8-r11 and
-// xmm0-xmm3. Uses 40 bytes of stack and calls nothing. Reads stay inside
+// xmm0-xmm4. Uses 40 bytes of stack and calls nothing. Reads stay inside
 // the input, key and value slices; stores stay inside the output capacity,
 // though bytes past the returned length may be overwritten.
 //
@@ -109,29 +114,36 @@
 50:
     lea r11, [rsi + 2]
     cmp r11, rdx
-    ja 95f
+    ja 30f
     cmp byte ptr [rsi + 1], 123
-    jne 95f
+    jne 30f
+    mov r12, r11
+51:
     mov rcx, rdx
-    sub rcx, r11
+    sub rcx, r12
     cmp rcx, 16
     jb 53f
-    movdqu xmm0, xmmword ptr [r11]
+    movdqu xmm0, xmmword ptr [r12]
     movdqa xmm2, xmm0
     pcmpeqb xmm0, xmm3
     pcmpeqb xmm2, xmm1
     por xmm0, xmm2
     pmovmskb eax, xmm0
     test eax, eax
-    jz 55f
+    jnz 52f
+    add r12, 16
+    jmp 51b
+52:
     bsf eax, eax
+    add rax, r12
+    sub rax, r11
     jmp 57f
 53:
     test rcx, rcx
-    jz 95f
+    jz 31f
     lea rax, [r15 + 16]
     cmp rdx, rax
-    jb 56f
+    jb 58f
     movdqu xmm0, xmmword ptr [rdx - 16]
     movdqa xmm2, xmm0
     pcmpeqb xmm0, xmm3
@@ -142,17 +154,14 @@
     add ecx, 16
     shr eax, cl
     test eax, eax
-    jz 95f
+    jz 31f
     bsf eax, eax
+    add rax, r12
+    sub rax, r11
     jmp 57f
-55:
-    lea r12, [r11 + 16]
-    jmp 58f
-56:
-    mov r12, r11
 58:
     cmp r12, rdx
-    jae 95f
+    jae 31f
     movzx eax, byte ptr [r12]
     cmp al, 125
     je 59f
@@ -335,6 +344,59 @@
     add rdi, r13
     lea rsi, [r12 + 1]
     jmp 2b
+// A percent sign not followed by an opening brace is literal only when no
+// opening brace comes before the next percent sign; otherwise the legacy
+// parser opens a marker at that brace, so reject. The literal run up to that percent sign (or the end)
+// is copied as one block.
+30:
+    mov eax, 0x7b7b7b7b
+    movd xmm2, eax
+    pshufd xmm2, xmm2, 0
+    lea r12, [rsi + 1]
+32:
+    mov rcx, rdx
+    sub rcx, r12
+    cmp rcx, 16
+    jb 34f
+    movdqu xmm0, xmmword ptr [r12]
+    movdqa xmm4, xmm0
+    pcmpeqb xmm0, xmm1
+    pcmpeqb xmm4, xmm2
+    por xmm0, xmm4
+    pmovmskb eax, xmm0
+    test eax, eax
+    jnz 33f
+    add r12, 16
+    jmp 32b
+33:
+    bsf eax, eax
+    add r12, rax
+    cmp byte ptr [r12], 123
+    je 95f
+    jmp 39f
+34:
+    cmp r12, rdx
+    jae 39f
+    movzx eax, byte ptr [r12]
+    cmp al, 37
+    je 39f
+    cmp al, 123
+    je 95f
+    inc r12
+    jmp 34b
+39:
+    mov r11, rsi
+    mov r13, r12
+    sub r13, rsi
+    dec r12
+    jmp 60b
+// An unfinished final marker is literal.
+31:
+    mov r11, rsi
+    mov r13, rdx
+    sub r13, rsi
+    lea r12, [rdx - 1]
+    jmp 60b
 80:
 90:
     mov rax, rdi

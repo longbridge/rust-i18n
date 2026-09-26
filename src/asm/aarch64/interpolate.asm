@@ -1,19 +1,52 @@
-// x0 input cursor; x1 input end; x2 descriptor array; x3 count.
-// x4 output cursor; x5 output end; x6 original output pointer.
-// Descriptor fields are key pointer, key length, value pointer, value length.
-// x7-x17 are scratch. x18 is never used. No stack or external calls.
-// v0 and v2 are data/comparison scratch; v1 holds '%' and v3 holds the close brace.
+// AArch64 interpolation kernel: the whole body of a naked function.
+//
+// ABI (AAPCS64, declared `extern "C"`):
+//   x0  input          readable input bytes
+//   x1  input_len
+//   x2  patterns       descriptors, 32 bytes each: key ptr, key len,
+//                      value ptr, value len at offsets 0, 8, 16, 24
+//   x3  pattern_count
+//   x4  output         writable bytes, disjoint from every readable source
+//   x5  capacity
+// Returns x0 = bytes written, x1 = input bytes consumed.
+//   consumed == input_len: complete; the output is the whole interpolation.
+//   consumed <  input_len: the output is full. The unconsumed input starts
+//                          at literal text or at a percent sign, so the
+//                          caller may grow the output and call again.
+//   x0 == usize::MAX:      rejected: a percent sign inside a marker, or a
+//                          stray percent sign followed by an opening brace
+//                          before the next percent sign. The caller
+//                          discards the output and uses the legacy parser.
+// Other input follows the legacy parser: a stray percent sign and an
+// unfinished final marker (percent, opening brace, and no closing brace or
+// percent sign before the end) are literal text.
+// Clobbers x0-x17, v0-v5 and NZCV. Saves nothing: x18 and x19-x28, v8-v15
+// are never touched. Uses no stack and calls nothing. Reads stay inside the
+// input, key and value slices; stores stay inside the output capacity,
+// though bytes past the returned length may be overwritten.
+//
+// Internal registers: x0 input cursor, x1 input end, d4 input start,
+// x2/x3 descriptor array and count, x4 output cursor, x5 output end,
+// x6 output start, x7-x17 scratch, v1 splat of percent, v3 splat of the
+// closing brace, v5 splat of the opening brace, v0/v2 data and comparison
+// scratch.
 // Every load checks the remaining source length and every store checks the
 // remaining output capacity first. Vector stores of literal text may write
 // past the advanced cursor, but never past x5; those bytes are rewritten
-// or left outside the returned initialized length.
+// or left outside the returned initialized length. Literal text is copied a
+// chunk or byte at a time and each marker is copied whole, so running out
+// of output stops at literal text or at a percent sign.
+    fmov d4, x0
+    add x1, x0, x1
+    add x5, x4, x5
     mov x6, x4
     movi v1.16b, #37
     movi v3.16b, #125
+    movi v5.16b, #123
 2:
     // Literal text. Find the next '%' 16, then 8, then 1 byte at a time.
     sub x17, x1, x0
-    cbz x17, 20f
+    cbz x17, 90f
     sub x16, x5, x4
     cmp x17, #16
     b.lo 34f
@@ -62,21 +95,40 @@
     ldrb w14, [x0]
     cmp w14, #37
     b.eq 3f
-    cbz x16, 21f
+    cbz x16, 90f
     strb w14, [x4], #1
     add x0, x0, #1
     b 2b
 3:
-    // x0 points at '%'. Require an open brace, then scan the key to the close brace. A missing
-    // brace, missing close, or nested '%' requests the Rust fallback.
+    // x0 points at '%'. Without an open brace it is a stray percent sign.
+    // Scan the key to the close brace: a nested '%' rejects, and reaching
+    // the end first makes the unfinished marker literal text.
     add x8, x0, #1
     cmp x8, x1
-    b.hs 21f
+    b.hs 60f
     ldrb w14, [x8]
     cmp w14, #123
-    b.ne 21f
+    b.ne 60f
     add x8, x8, #1
     mov x9, x8
+42:
+    sub x17, x1, x9
+    cmp x17, #16
+    b.lo 4f
+    ldr q0, [x9]
+    cmeq v2.16b, v0.16b, v1.16b
+    cmeq v0.16b, v0.16b, v3.16b
+    orr v2.16b, v2.16b, v0.16b
+    shrn v2.8b, v2.8h, #4
+    fmov x14, d2
+    cbnz x14, 43f
+    add x9, x9, #16
+    b 42b
+43:
+    rbit x14, x14
+    clz x14, x14
+    add x9, x9, x14, lsr #2
+    b 46f
 4:
     sub x17, x1, x9
     cmp x17, #8
@@ -93,18 +145,19 @@
     rbit x14, x14
     clz x14, x14
     add x9, x9, x14, lsr #3
+46:
     ldrb w14, [x9]
     cmp w14, #37
-    b.eq 21f
+    b.eq 95f
     b 5f
 45:
     cmp x9, x1
-    b.hs 21f
+    b.hs 68f
     ldrb w14, [x9]
     cmp w14, #125
     b.eq 5f
     cmp w14, #37
-    b.eq 21f
+    b.eq 95f
     add x9, x9, #1
     b 45b
 5:
@@ -179,10 +232,11 @@
     sub x16, x9, x15
     add x16, x16, #1
 11:
-    // Copy x16 bytes from x15 after checking output capacity.
+    // Copy x16 bytes from x15 after checking output capacity. When it does
+    // not fit, x0 still points at the percent sign.
     sub x17, x5, x4
     cmp x16, x17
-    b.hi 21f
+    b.hi 90f
     add x13, x15, x16
     add x7, x4, x16
     cmp x16, #16
@@ -236,9 +290,63 @@
     mov x4, x7
     add x0, x9, #1
     b 2b
-20:
+60:
+    // Stray '%' at x0. It is literal only when no open brace comes before
+    // the next '%'; otherwise the legacy parser opens a marker at that
+    // brace, so reject. The literal run up to the next '%' or the end is
+    // copied as one block, and a close brace inside it does not end it.
+    add x9, x0, #1
+62:
+    sub x17, x1, x9
+    cmp x17, #16
+    b.lo 64f
+    ldr q0, [x9]
+    cmeq v2.16b, v0.16b, v1.16b
+    cmeq v0.16b, v0.16b, v5.16b
+    orr v2.16b, v2.16b, v0.16b
+    shrn v2.8b, v2.8h, #4
+    fmov x14, d2
+    cbnz x14, 63f
+    add x9, x9, #16
+    b 62b
+63:
+    rbit x14, x14
+    clz x14, x14
+    add x9, x9, x14, lsr #2
+    ldrb w14, [x9]
+    cmp w14, #123
+    b.eq 95f
+    b 69f
+64:
+    cmp x9, x1
+    b.hs 69f
+    ldrb w14, [x9]
+    cmp w14, #37
+    b.eq 69f
+    cmp w14, #123
+    b.eq 95f
+    add x9, x9, #1
+    b 64b
+69:
+    // Copy [x0, x9) and resume at x9. The copy continues after x9 - 1.
+    mov x15, x0
+    sub x16, x9, x0
+    sub x9, x9, #1
+    b 11b
+68:
+    // Unfinished final marker: copy [x0, x1) literally and complete.
+    mov x15, x0
+    sub x16, x1, x0
+    sub x9, x1, #1
+    b 11b
+90:
+    // Complete or output full.
+    fmov x9, d4
+    sub x1, x0, x9
     sub x0, x4, x6
-    b 22f
-21:
+    ret
+95:
+    // Rejected.
     mov x0, #-1
-22:
+    mov x1, #0
+    ret

@@ -172,7 +172,8 @@ def prepare(source, variant, architecture, overlay):
     write_if_changed(source / "src/lib.rs", cow_route(lib, ASM_CALL if variant == "asm" else RUST_CALL))
 
     for required in (
-        f"src/asm/{architecture}/interpolate.rs",
+        # Naked-function kernels have no per-architecture Rust shim.
+        *[path for path in (f"src/asm/{architecture}/interpolate.rs",) if (ROOT / path).is_file()],
         f"src/asm/{architecture}/interpolate.asm",
         "src/asm/interpolation_tests.rs",
         "benches/support/asm_effect.rs",
@@ -400,11 +401,14 @@ def main():
     benchmark_hashes = {variant: source_hash(source, BENCHMARK_INPUTS) for variant, source in sources.items()}
     if len(set(benchmark_hashes.values())) != 1:
         raise RuntimeError(f"Variant benchmark inputs differ: {benchmark_hashes}")
-    candidate_files = (
-        "src/asm/interpolate.rs",
-        "src/asm/interpolation_tests.rs",
-        f"src/asm/{architecture}/interpolate.rs",
-        f"src/asm/{architecture}/interpolate.asm",
+    candidate_files = tuple(
+        path for path in (
+            "src/asm/interpolate.rs",
+            "src/asm/interpolation_tests.rs",
+            f"src/asm/{architecture}/interpolate.rs",
+            f"src/asm/{architecture}/interpolate.asm",
+        )
+        if (sources["asm"] / path).is_file()
     )
     overlays = {
         "asm": source_hash(sources["asm"], candidate_files),
