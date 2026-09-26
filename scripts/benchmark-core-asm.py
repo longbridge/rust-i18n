@@ -43,6 +43,12 @@ LONG_CASES = (
     "asm_effect_unicode_long",
 )
 ALL_CASES = CORE_CASES + DIRECT_CASES + LONG_CASES
+BENCHMARK_INPUTS = (
+    "benches/bench.rs",
+    "benches/asm_effect.rs",
+    "benches/fixtures/asm/en.yml",
+    "benches/fixtures/asm/fr.yml",
+)
 
 
 def run(command, *, cwd=ROOT, env=None, stdout=None):
@@ -173,6 +179,7 @@ def prepare(source, variant, architecture, revision):
         candidate = ROOT / "src/asm"
         for name, destination in (
             ("interpolate.rs", "src/asm/interpolate.rs"),
+            ("interpolation_tests.rs", "src/asm/interpolation_tests.rs"),
             (f"{architecture}/interpolate.rs", f"src/asm/{architecture}/interpolate.rs"),
             (f"{architecture}/interpolate.asm", f"src/asm/{architecture}/interpolate.asm"),
         ):
@@ -184,6 +191,17 @@ def prepare(source, variant, architecture, revision):
 
 def lock_hash(source):
     return hashlib.sha256((source / "Cargo.lock").read_bytes()).hexdigest()
+
+
+def source_hash(source, paths):
+    digest = hashlib.sha256()
+    for relative in paths:
+        contents = (source / relative).read_bytes()
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        digest.update(len(contents).to_bytes(8, "big"))
+        digest.update(contents)
+    return digest.hexdigest()
 
 
 def binary(target, name):
@@ -212,6 +230,11 @@ def test(source, target):
 
 def measure(source, target, executables, cases, pass_number, debug):
     values = {}
+    # On --resume, a failed prior pass must not contribute stale named results.
+    for case in cases:
+        saved = target / "criterion" / case / f"pass_{pass_number}"
+        if saved.exists():
+            shutil.rmtree(saved)
     for bench_name, bench_cases in (
         ("bench", [case for case in cases if case in CORE_CASES + DIRECT_CASES]),
         ("asm_effect", [case for case in cases if case in LONG_CASES]),
@@ -246,7 +269,7 @@ def size_probe(source, target):
     return path.stat().st_size, subprocess.check_output([str(path), "en", "Jason"], cwd=source)
 
 
-def report(revision, architecture, cases, measurements, digest, debug, sizes=None):
+def report(revision, architecture, cases, measurements, digest, overlays, debug, sizes=None):
     def pair(case, variant):
         return [result[case] for result in measurements[variant]]
 
@@ -260,6 +283,10 @@ def report(revision, architecture, cases, measurements, digest, debug, sizes=Non
         "use the same benchmark source, scalar percent scanner, and Cargo.lock.",
         f"Host: {cpu_name()} ({architecture}); {platform.platform()}.",
         f"Compiler: `{capture(['rustc', '--version'])}`; Cargo.lock SHA-256: `{digest}`.",
+        f"ASM source overlay SHA-256: `{overlays['asm']}`; "
+        f"benchmark inputs SHA-256: `{overlays['benchmarks']}`.",
+        "The overlay hashes include file names and bytes from the copied "
+        "candidate source, tests, benchmark source, and locale fixtures.",
         "Criterion: " + ("debug 10 samples, 0.1 s warmup, 0.2 s measurement" if debug else
                         "30 samples, 1 s warmup, 2 s measurement") + "; two passes per variant, Rust–ASM–ASM–Rust.",
         "",
@@ -364,6 +391,20 @@ def main():
     digests = {variant: lock_hash(source) for variant, source in sources.items()}
     if len(set(digests.values())) != 1:
         raise RuntimeError(f"Variant lockfiles differ: {digests}")
+    benchmark_hashes = {variant: source_hash(source, BENCHMARK_INPUTS) for variant, source in sources.items()}
+    if len(set(benchmark_hashes.values())) != 1:
+        raise RuntimeError(f"Variant benchmark inputs differ: {benchmark_hashes}")
+    candidate_files = (
+        "src/lib.rs",
+        "src/asm/interpolate.rs",
+        "src/asm/interpolation_tests.rs",
+        f"src/asm/{architecture}/interpolate.rs",
+        f"src/asm/{architecture}/interpolate.asm",
+    )
+    overlays = {
+        "asm": source_hash(sources["asm"], candidate_files),
+        "benchmarks": benchmark_hashes["rust"],
+    }
     binaries = {variant: build(sources[variant], targets[variant]) for variant in sources}
     for variant in sources:
         test(sources[variant], targets[variant])
@@ -384,7 +425,10 @@ def main():
             expected_output = output
     output = args.output if args.output.is_absolute() else ROOT / args.output
     output.parent.mkdir(parents=True, exist_ok=True)
-    markdown = report(revision, architecture, cases, measurements, next(iter(digests.values())), args.debug, sizes)
+    markdown = report(
+        revision, architecture, cases, measurements,
+        next(iter(digests.values())), overlays, args.debug, sizes,
+    )
     output.write_text(markdown)
     print(f"Wrote {output}")
     if args.append_github_summary:

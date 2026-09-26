@@ -36,8 +36,11 @@ pub(super) unsafe fn interpolate(
     // SAFETY: The caller supplies the valid, disjoint slices above. Every input
     // byte load checks its end pointer; descriptor loads check the count; key
     // comparisons check key length; copies check remaining output capacity.
-    // All mutated registers and condition flags are declared. No stack access,
-    // external calls, retained pointers, or reserved x18 register are used.
+    // Vector literal loads/stores require 16 remaining input/output bytes;
+    // key and value chunks only access their complete 8/4/2/1 or 16-byte spans.
+    // All mutated registers and condition flags are declared, including vector
+    // scratch v0-v2. No stack access, external calls, retained pointers, or
+    // reserved x18 register are used.
     unsafe {
         asm!(
             include_str!("interpolate.asm"),
@@ -59,6 +62,9 @@ pub(super) unsafe fn interpolate(
             out("x15") _,
             out("x16") _,
             out("x17") _,
+            out("v0") _,
+            out("v1") _,
+            out("v2") _,
             options(nostack),
         );
     }

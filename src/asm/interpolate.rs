@@ -6,12 +6,18 @@
 
 use std::borrow::Cow;
 
-#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+#[cfg(all(
+    target_pointer_width = "64",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 use std::mem::MaybeUninit;
 
 /// Layout consumed by both architecture kernels. Only the initialized prefix
-/// of a stack array is passed to assembly.
-#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+/// of a stack array is passed to assembly. The kernels use 64-bit field offsets.
+#[cfg(all(
+    target_pointer_width = "64",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 #[repr(C)]
 #[derive(Clone, Copy)]
 #[allow(dead_code)] // Fields are read by the architecture assembly kernels.
@@ -22,11 +28,11 @@ pub(super) struct Pattern {
     value_len: usize,
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 #[path = "x86_64/interpolate.rs"]
 mod arch;
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_pointer_width = "64"))]
 #[path = "aarch64/interpolate.rs"]
 mod arch;
 
@@ -46,7 +52,10 @@ pub(crate) fn try_replace_patterns_cow(
     patterns: &[&str],
     values: &[Cow<'_, str>],
 ) -> Option<String> {
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(all(
+        target_pointer_width = "64",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     {
         // The original parser pairs entries with `zip`, so unpaired names or
         // values must be ignored. Larger paired sets use the Rust path.
@@ -105,7 +114,10 @@ pub(crate) fn try_replace_patterns_cow(
         }
     }
 
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(not(all(
+        target_pointer_width = "64",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
     {
         let _ = (input, patterns, values);
         None

@@ -49,6 +49,9 @@ pub(super) unsafe fn interpolate(
             out("r13") _,
             out("r14") _,
             out("r15") _,
+            out("xmm0") _,
+            out("xmm1") _,
+            out("xmm2") _,
             options(nostack),
         );
     }

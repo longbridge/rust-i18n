@@ -18,7 +18,10 @@ mod core_asm_experiment_tests {
     }
 
     fn assert_kernel_used(input: &str, patterns: &[&str], values: &[Cow<'_, str>]) {
-        if cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+        if cfg!(all(
+            target_pointer_width = "64",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )) {
             assert!(
                 core_asm_runtime::try_replace_patterns_cow(input, patterns, values).is_some(),
                 "kernel did not run for supported input={input:?}, patterns={patterns:?}"
@@ -79,12 +82,16 @@ mod core_asm_experiment_tests {
     fn malformed_markers_and_literal_percent_use_rust_fallback() {
         let values = [Cow::Borrowed("A"), Cow::Borrowed("X")];
         for input in [
-            "%", "literal % text", "%{a", "%{a%{x}", "%%{a}", "%{a} then %",
+            "%",
+            "literal % text",
+            "%{a",
+            "%{a%{x}",
+            "%%{a}",
+            "%{a} then %",
             "%{a} then %{unfinished",
         ] {
             assert!(
-                core_asm_runtime::try_replace_patterns_cow(input, &["a", "x"], &values)
-                    .is_none(),
+                core_asm_runtime::try_replace_patterns_cow(input, &["a", "x"], &values).is_none(),
                 "malformed input unexpectedly used kernel: {input:?}"
             );
             assert_matches_rust(input, &["a", "x"], &values);
