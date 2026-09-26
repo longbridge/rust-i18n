@@ -1,0 +1,39 @@
+name: ASM contribution experiment
+
+on:
+  pull_request:
+    paths:
+      - "experiments/asm/**"
+      - "scripts/benchmark-asm.py"
+      - ".github/workflows/asm-experiment.yml"
+      - "src/**"
+      - "crates/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asm-experiment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: Compare scanner implementations
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Apple Silicon runner
+        if: runner.os == 'macOS'
+        run: test "$(uname -m)" = arm64
+      - name: Measure ASM contribution
+        run: python3 scripts/benchmark-asm.py --include-size --output target/asm-comparison.md --append-github-summary
+      - name: Upload controlled comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: asm-contribution-${{ runner.os }}-${{ runner.arch }}
+          path: target/asm-comparison.md
