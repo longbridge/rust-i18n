@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Compare the optimized Rust interpolation path with the core ASM candidate.
+"""Compare the Rust interpolation path with the production ASM kernel.
 
-Both variants export the same Git HEAD into target/. Each uses the scalar
-percent scanner, so the only runtime difference is the Cow interpolation hook.
+Both variants export Git HEAD into target/ and overlay the working-tree `src/`
+and `benches/` directories, so uncommitted kernel changes are measured. The ASM
+variant keeps production routing (`replace_patterns_cow` calls the kernel); the
+Rust variant rewrites only that entry to call the Rust parser directly.
 """
 
 import argparse
@@ -65,14 +67,12 @@ def capture(command):
     return subprocess.check_output(command, cwd=ROOT, text=True).strip()
 
 
-def head_file(revision, relative):
-    result = subprocess.run(
-        ["git", "show", f"{revision}:{relative}"],
-        cwd=ROOT, capture_output=True, check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"HEAD must contain {relative}; commit the interpolation migration first")
-    return result.stdout.decode()
+OVERLAY_DIRS = ("src", "benches")
+COW_ENTRY = re.compile(
+    r"(pub fn replace_patterns_cow\([^)]*\) -> String \{\n)(.*?)(\n\}\n)", re.DOTALL
+)
+ASM_CALL = "asm::interpolate::replace_patterns_cow(input, patterns, values)"
+RUST_CALL = "replace_patterns_impl(input, patterns, values)"
 
 
 def arch():
@@ -107,9 +107,10 @@ def cpu_name():
 
 
 def write_if_changed(path, contents):
-    if not path.exists() or path.read_text() != contents:
+    data = contents.encode() if isinstance(contents, str) else contents
+    if not path.exists() or path.read_bytes() != data:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(contents)
+        path.write_bytes(data)
 
 
 def copy_if_changed(source, destination):
@@ -133,92 +134,59 @@ def export_head(source, archive_path, revision):
     archive_path.unlink()
 
 
-def scalar_scanner(production):
-    _, marker, tests = production.partition("#[cfg(test)]")
-    if not marker:
-        raise RuntimeError("Production scanner tests marker missing")
-    return (
-        "pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {\n"
-        "    bytes.iter().position(|&byte| byte == b'%')\n"
-        "}\n\n" + marker + tests
+def worktree_files():
+    """Tracked and untracked, non-ignored paths under OVERLAY_DIRS."""
+    output = subprocess.check_output(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *OVERLAY_DIRS],
+        cwd=ROOT,
     )
+    return sorted({path.decode() for path in output.split(b"\0") if path})
 
 
-def normalize_cow_lib(production):
-    """Force the optimized Rust Cow entry regardless of HEAD's default route."""
-    rust_call = "replace_patterns_impl(input, patterns, values)"
-    production_call = "asm::interpolate::replace_patterns_cow(input, patterns, values)"
-    suffix = "\n}\n\nfn replace_patterns_impl"
-    matches = [call for call in (rust_call, production_call) if production.count("    " + call + suffix) == 1]
+def worktree_dirty():
+    return bool(capture(["git", "status", "--porcelain", "--", *OVERLAY_DIRS]))
+
+
+def cow_route(lib, call):
+    """Return src/lib.rs with the public Cow entry's body set to `call`."""
+    matches = COW_ENTRY.findall(lib)
     if len(matches) != 1:
-        raise RuntimeError("Cow entry must call exactly one recognized Rust or production ASM route")
-    return production.replace("    " + matches[0] + suffix, "    " + rust_call + suffix, 1)
+        raise RuntimeError("Expected one `pub fn replace_patterns_cow` in src/lib.rs")
+    if matches[0][1].strip() != ASM_CALL:
+        raise RuntimeError(f"Production Cow entry must call `{ASM_CALL}`; found {matches[0][1].strip()!r}")
+    return COW_ENTRY.sub(lambda match: match.group(1) + "    " + call + match.group(3), lib, count=1)
 
 
-def candidate_lib(production):
-    production = normalize_cow_lib(production)
-    if production.count("mod asm;\n") != 1:
-        raise RuntimeError("Expected one interpolation module declaration in src/lib.rs")
-    production = production.replace(
-        "mod asm;\n",
-        "mod asm;\n#[path = \"asm/interpolate.rs\"]\nmod core_asm_runtime;\n",
-        1,
-    )
-    original = "    replace_patterns_impl(input, patterns, values)\n}\n\nfn replace_patterns_impl"
-    if production.count(original) != 1:
-        raise RuntimeError("Normalized Cow entry not found in src/lib.rs")
-    hooked = production.replace(
-        original,
-        "    core_asm_runtime::replace_patterns_cow(input, patterns, values)\n"
-        "}\n\nfn replace_patterns_impl",
-        1,
-    )
-    tests = ROOT / "src/asm/interpolation_tests.rs"
-    if not tests.is_file():
-        raise RuntimeError(f"Missing core ASM tests: {tests}")
-    return hooked + "\n" + tests.read_text() + "\n"
+def prepare(source, variant, architecture, overlay):
+    # Rewrite only changed files on --resume, preserving incremental builds.
+    for relative in overlay:
+        if relative == "src/lib.rs":
+            continue
+        path = ROOT / relative
+        destination = source / relative
+        if path.is_file():
+            write_if_changed(destination, path.read_bytes())
+        elif destination.exists():
+            destination.unlink()
+    lib = (ROOT / "src/lib.rs").read_text()
+    write_if_changed(source / "src/lib.rs", cow_route(lib, ASM_CALL if variant == "asm" else RUST_CALL))
 
-
-def prepare(source, variant, architecture, revision):
-    # Regenerate only changed files on --resume, preserving incremental builds.
-    head_lib = head_file(revision, "src/lib.rs")
-    head_scanner = head_file(revision, "src/asm/mod.rs")
-    write_if_changed(source / "src/asm/mod.rs", scalar_scanner(head_scanner))
-    write_if_changed(
-        source / "src/lib.rs",
-        candidate_lib(head_lib) if variant == "asm" else normalize_cow_lib(head_lib),
-    )
-
-    for source_file, relative in (
-        (ROOT / "benches/bench.rs", "benches/bench.rs"),
-        (ROOT / "benches/support/asm_effect.rs", "benches/asm_effect.rs"),
-        (ROOT / "benches/fixtures/asm/en.yml", "benches/fixtures/asm/en.yml"),
-        (ROOT / "benches/fixtures/asm/fr.yml", "benches/fixtures/asm/fr.yml"),
+    for required in (
+        f"src/asm/{architecture}/interpolate.rs",
+        f"src/asm/{architecture}/interpolate.asm",
+        "src/asm/interpolation_tests.rs",
+        "benches/support/asm_effect.rs",
+        "benches/fixtures/asm/en.yml",
+        "benches/fixtures/asm/fr.yml",
     ):
-        if not source_file.is_file():
-            raise RuntimeError(f"Missing benchmark input: {source_file}")
-        copy_if_changed(source_file, source / relative)
+        if not (source / required).is_file():
+            raise RuntimeError(f"Missing {required} in {source}")
+    copy_if_changed(source / "benches/support/asm_effect.rs", source / "benches/asm_effect.rs")
     manifest = source / "Cargo.toml"
     contents = manifest.read_text()
     stanza = '\n[[bench]]\nname = "asm_effect"\nharness = false\n'
     if 'name = "asm_effect"' not in contents:
         write_if_changed(manifest, contents + stanza)
-
-    if variant == "asm":
-        candidate = ROOT / "src/asm"
-        for name, destination in (
-            ("interpolate.rs", "src/asm/interpolate.rs"),
-            ("interpolation_tests.rs", "src/asm/interpolation_tests.rs"),
-            (f"{architecture}/interpolate.rs", f"src/asm/{architecture}/interpolate.rs"),
-        ):
-            path = candidate / name
-            if not path.is_file():
-                raise RuntimeError(f"Missing core ASM candidate: {path}")
-            copy_if_changed(path, source / destination)
-        assembly = ROOT / "src/asm" / architecture / "interpolate.asm"
-        if not assembly.is_file():
-            raise RuntimeError(f"Missing core ASM candidate: {assembly}")
-        copy_if_changed(assembly, source / "src/asm" / architecture / "interpolate.asm")
 
 
 def lock_hash(source):
@@ -260,7 +228,7 @@ def test(source, target):
     run(["cargo", "test", "--offline", "--locked", "--release", "--lib"], cwd=source, env=environment(target))
 
 
-def measure(source, target, executables, cases, pass_number, debug):
+def measure(source, target, executables, cases, pass_number, quick):
     values = {}
     # On --resume, a failed prior pass must not contribute stale named results.
     for case in cases:
@@ -276,9 +244,9 @@ def measure(source, target, executables, cases, pass_number, debug):
         expression = "^(?:" + "|".join(re.escape(case) for case in bench_cases) + ")$"
         arguments = [
             str(executables[bench_name]), "--bench", expression,
-            "--sample-size", "10" if debug else "30",
-            "--warm-up-time", "0.1" if debug else "1",
-            "--measurement-time", "0.2" if debug else "2",
+            "--sample-size", "10" if quick else "30",
+            "--warm-up-time", "0.1" if quick else "1",
+            "--measurement-time", "0.2" if quick else "2",
             "--save-baseline", f"pass_{pass_number}",
         ]
         run(arguments, cwd=source, env=environment(target))
@@ -301,7 +269,7 @@ def size_probe(source, target):
     return path.stat().st_size, subprocess.check_output([str(path), "en", "Jason"], cwd=source)
 
 
-def report(revision, architecture, cases, measurements, digest, overlays, debug, sizes=None):
+def report(revision, architecture, cases, measurements, digest, overlays, dirty, quick, sizes=None):
     def pair(case, variant):
         return [result[case] for result in measurements[variant]]
 
@@ -311,15 +279,18 @@ def report(revision, architecture, cases, measurements, digest, overlays, debug,
     lines = [
         "# Controlled core interpolation comparison",
         "",
-        f"Git revision: `{revision}`. Both variants export the same revision and "
-        "use the same benchmark source, scalar percent scanner, and Cargo.lock.",
+        f"Git revision: `{revision}`"
+        + (" with uncommitted `src/` or `benches/` changes" if dirty else "")
+        + ". Both variants use the same source, benchmarks, scalar percent scanner, "
+        "and Cargo.lock. Rust calls the Rust parser from `replace_patterns_cow`; "
+        "ASM keeps the production route through the kernel.",
         f"Host: {cpu_name()} ({architecture}); {platform.platform()}.",
         f"Compiler: `{capture(['rustc', '--version'])}`; Cargo.lock SHA-256: `{digest}`.",
-        f"ASM source overlay SHA-256: `{overlays['asm']}`; "
+        f"Kernel source SHA-256: `{overlays['asm']}`; "
         f"benchmark inputs SHA-256: `{overlays['benchmarks']}`.",
-        "The overlay hashes include file names and bytes from the copied "
-        "candidate source, tests, benchmark source, and locale fixtures.",
-        "Criterion: " + ("debug 10 samples, 0.1 s warmup, 0.2 s measurement" if debug else
+        "The hashes cover file names and bytes of the kernel adapter, wrapper, "
+        "instructions, tests, benchmark source, and locale fixtures.",
+        "Criterion: " + ("quick 10 samples, 0.1 s warmup, 0.2 s measurement" if quick else
                         "30 samples, 1 s warmup, 2 s measurement") + "; two passes per variant, Rust–ASM–ASM–Rust.",
         "",
     ]
@@ -372,7 +343,7 @@ def report(revision, architecture, cases, measurements, digest, overlays, debug,
     lines.append(
         "Both release libraries and benchmark binaries were built before timing, "
         "and both release library test suites passed. Direct replacement controls "
-        "do not use the Cow interpolation hook."
+        "call `replace_patterns`, which does not use the kernel."
     )
     lines.append("")
     return "\n".join(lines)
@@ -382,7 +353,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("target/core-asm-comparison.md"))
     parser.add_argument("--filter", help="Regex selecting case names from the fixed benchmark set")
-    parser.add_argument("--debug", action="store_true", help="Short samples for script debugging")
+    parser.add_argument("--quick", "--debug", dest="quick", action="store_true",
+                        help="Short Criterion samples for checking the script, not for results")
     parser.add_argument("--resume", type=Path, help="Reuse an existing target/core-asm-comparison run directory")
     parser.add_argument("--include-size", action="store_true")
     parser.add_argument("--append-github-summary", action="store_true")
@@ -395,10 +367,8 @@ def main():
         parser.error("--filter matched no benchmark cases")
     architecture = arch()
     revision = capture(["git", "rev-parse", "HEAD"])
-    head_lib = head_file(revision, "src/lib.rs")
-    head_file(revision, "src/asm/mod.rs")
-    if head_lib.count("mod asm;\n") != 1:
-        raise RuntimeError("HEAD must have the migrated interpolation module; commit the migration first")
+    overlay = worktree_files()
+    dirty = worktree_dirty()
     run(["cargo", "fetch", "--locked"], cwd=ROOT)
     base = ROOT / "target/core-asm-comparison"
     resume_path = None
@@ -421,7 +391,7 @@ def main():
         if not args.resume:
             source.parent.mkdir()
             export_head(source, source.parent / "head.tar", revision)
-        prepare(source, variant, architecture, revision)
+        prepare(source, variant, architecture, overlay)
         sources[variant] = source
         targets[variant] = run_dir / variant / "target"
     digests = {variant: lock_hash(source) for variant, source in sources.items()}
@@ -431,7 +401,6 @@ def main():
     if len(set(benchmark_hashes.values())) != 1:
         raise RuntimeError(f"Variant benchmark inputs differ: {benchmark_hashes}")
     candidate_files = (
-        "src/lib.rs",
         "src/asm/interpolate.rs",
         "src/asm/interpolation_tests.rs",
         f"src/asm/{architecture}/interpolate.rs",
@@ -448,7 +417,7 @@ def main():
     for variant in ("rust", "asm", "asm", "rust"):
         pass_number = len(measurements[variant]) + 1
         measurements[variant].append(
-            measure(sources[variant], targets[variant], binaries[variant], cases, pass_number, args.debug)
+            measure(sources[variant], targets[variant], binaries[variant], cases, pass_number, args.quick)
         )
     sizes = None
     if args.include_size:
@@ -463,7 +432,7 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     markdown = report(
         revision, architecture, cases, measurements,
-        next(iter(digests.values())), overlays, args.debug, sizes,
+        next(iter(digests.values())), overlays, dirty, args.quick, sizes,
     )
     output.write_text(markdown)
     print(f"Wrote {output}")

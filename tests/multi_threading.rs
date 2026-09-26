@@ -13,7 +13,7 @@ fn test_load_and_store() {
         while Instant::now() < end {
             for _ in 0..100 {
                 i = i.wrapping_add(1);
-                if i % 2 == 0 {
+                if i.is_multiple_of(2) {
                     set_locale(&format!("en-{i}"));
                 } else {
                     set_locale(&format!("fr-{i}"));
@@ -40,7 +40,7 @@ fn test_t_concurrent() {
         while Instant::now() < end {
             for _ in 0..100 {
                 i = i.wrapping_add(1);
-                if i % 2 == 0 {
+                if i.is_multiple_of(2) {
                     set_locale(&format!("en-{i}"));
                 } else {
                     set_locale(&format!("fr-{i}"));

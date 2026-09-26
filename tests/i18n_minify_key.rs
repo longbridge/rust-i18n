@@ -41,7 +41,7 @@ mod tests {
         assert_eq!(t!("hello"), "hello");
         assert_eq!(t!("hello",), "hello");
         assert_eq!(t!("hello", locale = "en"), "hello");
-        assert_eq!(t!(format!("hello"), locale = "en"), "hello");
+        assert_eq!(t!(String::from("hello"), locale = "en"), "hello");
         assert_eq!(t!("Hello, %{name}", name = "Bar"), "Hello, Bar");
         assert_eq!(
             t!("You have %{count} messages.", locale = "zh-CN", count = 1 + 2,,,),

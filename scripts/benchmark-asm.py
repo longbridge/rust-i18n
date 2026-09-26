@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Compare placeholder scanners in identical exports of the current Git HEAD.
 
-Requires a native x86_64 or AArch64 host. All task files stay under target/.
+Each variant overlays the working-tree `src/` and `benches/` directories, routes
+`replace_patterns_cow` through the Rust parser (production uses the interpolation
+kernel, which never calls the scanner), and replaces only `find_percent` in
+`src/asm/mod.rs`. Requires a
+native x86_64 or AArch64 host. All task files stay under target/.
 """
 
 import argparse
@@ -9,6 +13,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -18,6 +23,26 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+OVERLAY_DIRS = ("src", "benches")
+PRODUCTION_SCANNER = re.compile(
+    r"^pub\(crate\) fn find_percent\(bytes: &\[u8\]\) -> Option<usize> \{\n.*?^\}\n",
+    re.DOTALL | re.MULTILINE,
+)
+COW_ENTRY = re.compile(
+    r"(pub fn replace_patterns_cow\([^)]*\) -> String \{\n)(.*?)(\n\}\n)", re.DOTALL
+)
+ASM_CALL = "asm::interpolate::replace_patterns_cow(input, patterns, values)"
+RUST_CALL = "replace_patterns_impl(input, patterns, values)"
+# Long-slice scan expression for each variant. The asm variants call naked
+# `.asm` kernels declared in src/asm/scan.rs; `intrinsics` is spliced in from
+# benches/support/scan_intrinsics.rs as src/asm/scan_intrinsics.rs.
+LONG_SCANS = {
+    "current": "scan::find_percent_legacy(bytes)",
+    "simd_asm": "scan::find_percent_simd(bytes)",
+    "intrinsics": "scan_intrinsics::find_percent(bytes)",
+    "memchr": "memchr::memchr(b'%', bytes)",
+}
+SCAN_MODULE = re.compile(r"#\[cfg\(all\(\s*test,(.*?)\)\)\]\nmod scan;\n", re.DOTALL)
 VARIANTS = ("scalar", "current", "intrinsics", "simd_asm", "memchr")
 CASES = (
     "asm_effect_plain",
@@ -86,90 +111,68 @@ def export_head(source, archive_path, revision):
     archive_path.unlink()
 
 
-def scanner_source(variant, production, arch, scanner_dir):
-    _, marker, production_tests = production.partition("#[cfg(test)]")
-    if not marker:
-        raise RuntimeError("Production scanner tests marker not found")
-    if variant == "current":
-        # The production scanner is now scalar. Retain the former thresholded
-        # architecture scanner as an explicit legacy comparison variant.
-        replacement = """#[cfg(target_arch = "aarch64")]
-mod aarch64;
-#[cfg(target_arch = "x86_64")]
-mod x86_64;
-
-/// Legacy architecture scanner, retained for the controlled comparison.
-pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
-    if bytes.len() < 256 {
-        return bytes.iter().position(|&byte| byte == b'%');
-    }
-
-    #[cfg(target_arch = "x86_64")]
-    {
-        x86_64::find_percent(bytes)
-    }
-    #[cfg(target_arch = "aarch64")]
-    {
-        aarch64::find_percent(bytes)
-    }
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    bytes.iter().position(|&byte| byte == b'%')
-}
-
-"""
-    elif variant == "scalar":
-        replacement = """/// Find the first percent byte using the scalar Rust iterator.
-pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
-    bytes.iter().position(|&byte| byte == b'%')
-}
-
-"""
-    elif variant in ("intrinsics", "simd_asm"):
-        source_name = "scan_intrinsics.rs" if variant == "intrinsics" else "scan_simd.rs"
-        candidate = scanner_dir / arch / source_name
-        if not candidate.is_file():
-            raise RuntimeError(f"Missing {candidate}")
-        replacement = f'#[path = "{arch}/{source_name}"]\nmod candidate;\n\n' + """/// Use the common scalar path for short translations.
-pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
-    if bytes.len() < 256 {
-        bytes.iter().position(|&byte| byte == b'%')
-    } else {
-        candidate::find_percent(bytes)
-    }
-}
-
-"""
-    elif variant == "memchr":
-        replacement = """/// Use the common scalar path for short translations.
-pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
-    if bytes.len() < 256 {
-        bytes.iter().position(|&byte| byte == b'%')
-    } else {
-        memchr::memchr(b'%', bytes)
-    }
-}
-
-"""
-    else:
-        raise ValueError(variant)
-    scanner_tests = (scanner_dir / "scan_tests.rs").read_text()
-    return (
-        "pub(crate) mod interpolate;\n\n"
-        + replacement
-        + marker
-        + production_tests
-        + "\n"
-        + scanner_tests
-        + "\n"
+def worktree_files():
+    """Tracked and untracked, non-ignored paths under OVERLAY_DIRS."""
+    output = subprocess.check_output(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *OVERLAY_DIRS],
+        cwd=ROOT,
     )
+    return sorted({path.decode() for path in output.split(b"\0") if path})
 
 
-def prepare_variant(source, variant, arch):
-    scanner_dir = ROOT / "src/asm"
-    shutil.copy2(ROOT / "benches/support/asm_effect.rs", source / "benches/asm_effect.rs")
-    shutil.copytree(
-        ROOT / "benches/fixtures/asm", source / "benches/fixtures/asm", dirs_exist_ok=True
+def worktree_dirty():
+    return bool(capture(["git", "status", "--porcelain", "--", *OVERLAY_DIRS]))
+
+
+def rust_cow_route(lib):
+    """Return src/lib.rs with the public Cow entry calling the Rust parser."""
+    matches = COW_ENTRY.findall(lib)
+    if len(matches) != 1 or matches[0][1].strip() != ASM_CALL:
+        raise RuntimeError(f"Expected `pub fn replace_patterns_cow` in src/lib.rs to call `{ASM_CALL}`")
+    return COW_ENTRY.sub(lambda match: match.group(1) + "    " + RUST_CALL + match.group(3), lib, count=1)
+
+
+def scanner_source(variant, production):
+    """Return src/asm/mod.rs with the production scanner replaced."""
+    if len(PRODUCTION_SCANNER.findall(production)) != 1:
+        raise RuntimeError("Expected one production find_percent in src/asm/mod.rs")
+    if variant == "scalar":
+        return production
+    if len(SCAN_MODULE.findall(production)) != 1:
+        raise RuntimeError("Expected one test-only `mod scan;` in src/asm/mod.rs")
+    # Build the naked scanners outside tests too. Only one is used per variant.
+    production = SCAN_MODULE.sub(
+        lambda match: f"#[cfg(all({match.group(1).strip()}))]\n#[allow(dead_code)]\nmod scan;\n",
+        production,
+        count=1,
     )
+    module = "mod scan_intrinsics;\n\n" if variant == "intrinsics" else ""
+    # `current` is the former thresholded REPNE/NEON scanner, retained as the
+    # legacy comparison; production now uses scalar Rust.
+    replacement = module + f"""/// Use the common scalar path for short translations.
+pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {{
+    if bytes.len() < 256 {{
+        bytes.iter().position(|&byte| byte == b'%')
+    }} else {{
+        {LONG_SCANS[variant]}
+    }}
+}}
+"""
+    return PRODUCTION_SCANNER.sub(lambda _: replacement, production, count=1)
+
+
+def prepare_variant(source, variant, overlay):
+    for relative in overlay:
+        path = ROOT / relative
+        destination = source / relative
+        if path.is_file():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, destination)
+        elif destination.exists():
+            destination.unlink()
+    if variant == "intrinsics":
+        shutil.copy2(source / "benches/support/scan_intrinsics.rs", source / "src/asm/scan_intrinsics.rs")
+    shutil.copy2(source / "benches/support/asm_effect.rs", source / "benches/asm_effect.rs")
 
     manifest = source / "Cargo.toml"
     contents = manifest.read_text()
@@ -178,26 +181,16 @@ def prepare_variant(source, variant, arch):
         raise RuntimeError("Expected exactly one [dependencies] header")
     if "memchr =" in contents:
         raise RuntimeError("Export already has a direct memchr dependency")
+    # Every variant gets the dependency so the builds stay matched.
     contents = contents.replace(dependency_header, dependency_header + 'memchr = "=2.7.5"\n')
     contents += '\n[[bench]]\nname = "asm_effect"\nharness = false\n'
     manifest.write_text(contents)
     shutil.copy2(ROOT / "Cargo.lock", source / "Cargo.lock")
 
+    lib = source / "src/lib.rs"
+    lib.write_text(rust_cow_route(lib.read_text()))
     module = source / "src/asm/mod.rs"
-    production = module.read_text()
-    module.write_text(scanner_source(variant, production, arch, scanner_dir))
-    if variant in ("intrinsics", "simd_asm"):
-        candidate_dir = scanner_dir / arch
-        candidate_name = "scan_intrinsics.rs" if variant == "intrinsics" else "scan_simd.rs"
-        exported_candidate_dir = source / "src/asm" / arch
-        exported_candidate_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(candidate_dir / candidate_name, exported_candidate_dir / candidate_name)
-        if variant == "simd_asm":
-            fragments = ROOT / "src/asm" / arch
-            exported_fragments = source / "src/asm" / arch
-            exported_fragments.mkdir(parents=True, exist_ok=True)
-            for sibling in fragments.glob("*.asm"):
-                shutil.copy2(sibling, exported_fragments / sibling.name)
+    module.write_text(scanner_source(variant, module.read_text()))
 
 
 def lock_digest(source):
@@ -225,10 +218,13 @@ def test_variant(source, target):
     run(["cargo", "test", "--offline", "--locked", "--release", "--lib"], cwd=source, env=environment(target))
 
 
-def measure(source, target, bench_binary, pass_number):
+def measure(source, target, bench_binary, pass_number, quick):
     run(
-        [str(bench_binary), "--bench", "--sample-size", "30", "--warm-up-time", "1",
-         "--measurement-time", "2", "--save-baseline", f"pass_{pass_number}"],
+        [str(bench_binary), "--bench",
+         "--sample-size", "10" if quick else "30",
+         "--warm-up-time", "0.1" if quick else "1",
+         "--measurement-time", "0.2" if quick else "2",
+         "--save-baseline", f"pass_{pass_number}"],
         cwd=source,
         env=environment(target),
     )
@@ -257,15 +253,18 @@ def mean(values):
     return sum(values) / len(values)
 
 
-def report(revision, arch, selected, measurements, lock_hash, sizes=None):
+def report(revision, arch, selected, measurements, lock_hash, dirty, quick, sizes=None):
     lines = [
         "# Controlled placeholder scanner comparison",
         "",
-        f"Git revision: `{revision}`. All variants export this same revision and "
-        "use the same benchmark source and dependency lockfile.",
+        f"Git revision: `{revision}`"
+        + (" with uncommitted `src/` or `benches/` changes" if dirty else "")
+        + ". All variants use this same source, benchmark source, and dependency lockfile.",
         f"Host: {cpu_name()} ({arch}); {platform.platform()}.",
-        f"Compiler: `{capture(['rustc', '--version'])}`; "
-        "Criterion: 30 samples, 1 s warmup, 2 s measurement, two passes per variant.",
+        f"Compiler: `{capture(['rustc', '--version'])}`; Criterion: "
+        + ("quick 10 samples, 0.1 s warmup, 0.2 s measurement" if quick
+           else "30 samples, 1 s warmup, 2 s measurement")
+        + ", two passes per variant.",
         f"Cargo.lock SHA-256: `{lock_hash}`.",
         "Order: " + " → ".join(selected + tuple(reversed(selected))) + ".",
         "",
@@ -337,7 +336,8 @@ def report(revision, arch, selected, measurements, lock_hash, sizes=None):
     lines.extend([
         "",
         "The `current` variant is the legacy thresholded architecture scanner; "
-        "the production default is scalar.",
+        "the production default is scalar. Every variant routes `replace_patterns_cow` "
+        "through the Rust parser so the scanner is on the measured path.",
         "",
         "All variants retain the same production runtime outside the scanner, "
         "with a common scalar path below 256 bytes except the all-scalar control. "
@@ -354,6 +354,8 @@ def main():
                         help="Subset for debugging; default compares all five")
     parser.add_argument("--include-size", action="store_true",
                         help="Build and compare stripped size_probe executables after timing")
+    parser.add_argument("--quick", action="store_true",
+                        help="Short Criterion samples for checking the script, not for results")
     parser.add_argument("--append-github-summary", action="store_true")
     args = parser.parse_args()
     selected = tuple(dict.fromkeys(args.variants))
@@ -361,7 +363,6 @@ def main():
         parser.error("--append-github-summary requires GITHUB_STEP_SUMMARY")
     arch = architecture()
     for required in (
-        ROOT / "src/asm/scan_tests.rs",
         ROOT / "benches/support/asm_effect.rs",
         ROOT / "benches/fixtures/asm/en.yml",
         ROOT / "benches/fixtures/asm/fr.yml",
@@ -369,6 +370,8 @@ def main():
         if not required.is_file():
             raise RuntimeError(f"Missing {required}")
     revision = capture(["git", "rev-parse", "HEAD"])
+    overlay = worktree_files()
+    dirty = worktree_dirty()
     run(["cargo", "fetch", "--locked"], cwd=ROOT)
     run_dir = ROOT / "target/asm-comparison" / uuid.uuid4().hex
     run_dir.mkdir(parents=True)
@@ -378,7 +381,7 @@ def main():
         source = run_dir / variant / "source"
         source.parent.mkdir()
         export_head(source, source.parent / "head.tar", revision)
-        prepare_variant(source, variant, arch)
+        prepare_variant(source, variant, overlay)
         run(["cargo", "metadata", "--offline", "--format-version", "1"],
             cwd=source, env=environment(run_dir / variant / "target"), stdout=subprocess.DEVNULL)
         sources[variant] = source
@@ -394,7 +397,7 @@ def main():
     for variant in selected + tuple(reversed(selected)):
         pass_number = len(measurements[variant]) + 1
         measurements[variant].append(
-            measure(sources[variant], targets[variant], binaries[variant], pass_number)
+            measure(sources[variant], targets[variant], binaries[variant], pass_number, args.quick)
         )
     sizes = None
     if args.include_size:
@@ -409,7 +412,9 @@ def main():
 
     output = args.output if args.output.is_absolute() else ROOT / args.output
     output.parent.mkdir(parents=True, exist_ok=True)
-    markdown = report(revision, arch, selected, measurements, next(iter(hashes.values())), sizes)
+    markdown = report(
+        revision, arch, selected, measurements, next(iter(hashes.values())), dirty, args.quick, sizes
+    )
     output.write_text(markdown)
     print(f"Wrote {output}")
     if args.append_github_summary:

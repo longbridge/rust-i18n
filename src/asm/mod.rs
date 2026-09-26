@@ -1,10 +1,35 @@
+//! Assembly-backed routines.
+//!
+//! This directory root holds the Rust adapters, naked function declarations,
+//! and tests. Each `<arch>/` directory holds the `.asm` instruction files.
+//! Instruction text never appears inline in `.rs` files.
+
 // The full interpolation kernel has its own safe adapter. Rejected input uses
 // the portable scanner below instead of the CPU-sensitive legacy REPNE scan.
 pub(crate) mod interpolate;
 
+/// Production scanner used by the Rust interpolation path.
+///
+/// `scripts/benchmark-asm.py` replaces this function in isolated exports to
+/// compare the scanner candidates declared below.
 pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
     bytes.iter().position(|&byte| byte == b'%')
 }
+
+// Benchmark-only naked `.asm` scanners, compiled for tests so every scanner
+// stays assembled and checked. `scripts/benchmark-asm.py` enables the module
+// in its exports.
+#[cfg(all(
+    test,
+    target_pointer_width = "64",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+mod scan;
+
+#[cfg(test)]
+mod interpolation_tests;
+#[cfg(test)]
+mod scan_tests;
 
 #[cfg(test)]
 mod tests {

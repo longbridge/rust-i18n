@@ -7,34 +7,39 @@ the **same source revision** and switches only the routine that finds the next
 `%` byte in a translation string.
 
 Run `python3 scripts/benchmark-asm.py` on the architecture being evaluated.
-The script creates isolated source overlays and build outputs under `target/`;
-it does not change production features, `cfg` choices, public APIs, or files
-in the active checkout. Each variant uses the same translation fixtures,
-benchmark source, lockfile, compiler, and build profile.
-The assembly candidates are inline instruction fragments from `.asm` files,
-included by narrow Rust `asm!` wrappers with explicit operands and safety
-comments. They require no separate assembler or linker step.
+The script exports Git HEAD for each variant under `target/asm-comparison/`,
+copies the working-tree `src/` and `benches/` over it, and changes two things:
+
+1. `replace_patterns_cow` calls the Rust parser. Production sends it to the
+   interpolation kernel, which never calls the scanner.
+2. `find_percent` in `src/asm/mod.rs` is swapped for the variant's scanner.
+
+The active checkout is never modified. Each variant uses the same translation
+fixtures, benchmark source, lockfile, compiler, and build profile. The scanner
+candidates are naked functions declared in `src/asm/scan.rs`, each with a
+whole `.asm` file from `src/asm/<arch>/` as its body. The intrinsics variant is
+spliced in from `benches/support/scan_intrinsics.rs`.
 
 ## Scanner variants
 
 The CLI key `current` denotes the retained legacy ASM scanner for compatibility.
-The production fallback scanner now uses scalar Rust. All instruction sources
-live in `src/asm/`; Rust wrappers and dispatch live in `src/interpolation/`.
+The production scanner uses scalar Rust.
 
 | Variant | Scan used for slices of at least 256 bytes |
 | --- | --- |
 | Rust scalar | Byte iterator search in ordinary Rust. |
 | Legacy ASM | The retained architecture-specific scanner (`repne scasb` on x86-64; 16-byte NEON blocks on AArch64). |
 | Matched SIMD intrinsics | SSE2 or runtime-detected AVX2 on x86-64; NEON on AArch64. |
-| Matched SIMD ASM | The same block widths, dispatch, match test, and scalar tail as the intrinsics variant, with the vector instructions in `.asm` fragments. |
+| Matched SIMD ASM | The same block widths, dispatch, match test, and scalar tail as the intrinsics variant, written as complete naked `.asm` functions. |
 | `memchr` | The `memchr` crate's byte search; the dependency is present in every overlay for a matched build. |
 
 All five variants keep the same ordinary Rust scan for slices shorter than
 256 bytes. The matched SIMD pair lets us compare the language used to express
 the *same algorithm*. The scalar and `memchr` variants provide practical
 alternatives; comparing either with legacy ASM does not by itself isolate an
-"ASM language" effect. On AArch64, legacy ASM may be the same algorithm as
-matched SIMD ASM, so their results should be interpreted accordingly.
+"ASM language" effect. On AArch64, legacy ASM and matched SIMD ASM call the
+same NEON kernel. A naked function is always an out-of-line call, while LLVM
+may inline the intrinsics, so the matched pair also measures that call.
 
 ## Measurements and interpretation
 
@@ -71,15 +76,36 @@ binary. Only native runs establish runtime performance for that CPU.
 ## Whole interpolation kernel
 
 Run `python3 scripts/benchmark-core-asm.py` to compare the Rust interpolation
-path with the optional safe adapter in `src/interpolation/interpolate.rs` and its
-architecture-specific files. Both overlays use the same Rust locale lookup,
-macro expansion, benchmark inputs, and scalar `%` scanner. The script changes
-only the interpolation path in one overlay, then runs shared correctness tests
-before timing complete `t!` calls. It also measures direct replacement as a
-control.
+path with the kernel that production uses. Both variants export Git HEAD under
+`target/core-asm-comparison/` with the working-tree `src/` and `benches/`
+copied over it, so uncommitted kernel changes are measured. The ASM variant
+keeps production routing. The Rust variant changes only the body of
+`replace_patterns_cow` to call `replace_patterns_impl`. Both variants use the
+same locale lookup, macro expansion, benchmark inputs, and scalar `%` scanner.
+Both run the full library test suite before timing complete `t!` calls. Direct
+`replace_patterns` calls are measured as a control; they do not use the kernel.
 
 The whole-kernel comparison asks whether replacing the interpolation routine
 helps the complete translation call. Its result includes dispatch and fallback
 costs. Report the Rust and assembly times and their ratio for each case,
 including short, long, Unicode, and malformed inputs. Keep the scanner results
-separate when attributing gains to hand-written instructions.
+separate when attributing gains to hand-written instructions. The report notes
+when the measured source has uncommitted changes.
+
+## Running the scripts
+
+```sh
+# Full runs, for results.
+python3 scripts/benchmark-asm.py --include-size
+python3 scripts/benchmark-core-asm.py --include-size
+
+# Check that a script builds, tests, and reports; timings are not usable.
+python3 scripts/benchmark-asm.py --quick --variants scalar simd_asm
+python3 scripts/benchmark-core-asm.py --quick --filter '^t_with_args$'
+```
+
+Reports are written to `target/asm-comparison.md` and
+`target/core-asm-comparison.md` unless `--output` is given. The core script
+also accepts `--resume target/core-asm-comparison/<run>` to reuse a run's
+builds. The `ASM contribution experiment` workflow runs both scripts on
+`ubuntu-latest` and `macos-15` and uploads the reports.
