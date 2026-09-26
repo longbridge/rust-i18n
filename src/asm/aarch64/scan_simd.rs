@@ -15,7 +15,7 @@ pub fn find_percent(bytes: &[u8]) -> Option<usize> {
         // Compiler-selected registers avoid Apple's reserved x18 register.
         unsafe {
             asm!(
-                include_str!("find_percent.asm"),
+                include_str!("find_percent_neon.asm"),
                 ptr = in(reg) chunk.as_ptr(),
                 has_match = lateout(reg) has_match,
                 out("v0") _,

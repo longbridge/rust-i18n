@@ -86,7 +86,7 @@ def export_head(source, archive_path, revision):
     archive_path.unlink()
 
 
-def scanner_source(variant, production, arch, experiment_dir):
+def scanner_source(variant, production, arch, scanner_dir):
     preamble, marker, production_tests = production.partition("#[cfg(test)]")
     if not marker:
         raise RuntimeError("Production scanner tests marker not found")
@@ -100,8 +100,8 @@ pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
 
 """
     elif variant in ("intrinsics", "simd_asm"):
-        source_name = "intrinsics.rs" if variant == "intrinsics" else "asm.rs"
-        candidate = experiment_dir / arch / source_name
+        source_name = "scan_intrinsics.rs" if variant == "intrinsics" else "scan_simd.rs"
+        candidate = scanner_dir / arch / source_name
         if not candidate.is_file():
             raise RuntimeError(f"Missing {candidate}")
         replacement = """mod candidate;
@@ -129,15 +129,16 @@ pub(crate) fn find_percent(bytes: &[u8]) -> Option<usize> {
 """
     else:
         raise ValueError(variant)
-    experiment_tests = (experiment_dir / "tests.rs").read_text()
-    return replacement + marker + production_tests + "\n" + experiment_tests + "\n"
+    scanner_tests = (scanner_dir / "scan_tests.rs").read_text()
+    return replacement + marker + production_tests + "\n" + scanner_tests + "\n"
 
 
 def prepare_variant(source, variant, arch):
-    experiment_dir = ROOT / "experiments/asm"
-    exported_experiments = source / "experiments/asm"
-    shutil.copytree(experiment_dir, exported_experiments, dirs_exist_ok=True)
-    shutil.copy2(experiment_dir / "bench.rs", source / "benches/asm_effect.rs")
+    scanner_dir = ROOT / "src/asm"
+    shutil.copy2(ROOT / "benches/support/asm_effect.rs", source / "benches/asm_effect.rs")
+    shutil.copytree(
+        ROOT / "benches/fixtures/asm", source / "benches/fixtures/asm", dirs_exist_ok=True
+    )
 
     manifest = source / "Cargo.toml"
     contents = manifest.read_text()
@@ -153,10 +154,10 @@ def prepare_variant(source, variant, arch):
 
     module = source / "src/asm/mod.rs"
     production = module.read_text()
-    module.write_text(scanner_source(variant, production, arch, experiment_dir))
+    module.write_text(scanner_source(variant, production, arch, scanner_dir))
     if variant in ("intrinsics", "simd_asm"):
-        candidate_dir = experiment_dir / arch
-        candidate_name = "intrinsics.rs" if variant == "intrinsics" else "asm.rs"
+        candidate_dir = scanner_dir / arch
+        candidate_name = "scan_intrinsics.rs" if variant == "intrinsics" else "scan_simd.rs"
         shutil.copy2(candidate_dir / candidate_name, source / "src/asm/candidate.rs")
         if variant == "simd_asm":
             for sibling in candidate_dir.glob("*.asm"):
@@ -320,10 +321,14 @@ def main():
     if args.append_github_summary and not os.environ.get("GITHUB_STEP_SUMMARY"):
         parser.error("--append-github-summary requires GITHUB_STEP_SUMMARY")
     arch = architecture()
-    experiment_dir = ROOT / "experiments/asm"
-    for required in ("bench.rs", "tests.rs", "locales/en.yml", "locales/fr.yml"):
-        if not (experiment_dir / required).is_file():
-            raise RuntimeError(f"Missing {experiment_dir / required}")
+    for required in (
+        ROOT / "src/asm/scan_tests.rs",
+        ROOT / "benches/support/asm_effect.rs",
+        ROOT / "benches/fixtures/asm/en.yml",
+        ROOT / "benches/fixtures/asm/fr.yml",
+    ):
+        if not required.is_file():
+            raise RuntimeError(f"Missing {required}")
     revision = capture(["git", "rev-parse", "HEAD"])
     run(["cargo", "fetch", "--locked"], cwd=ROOT)
     run_dir = ROOT / "target/asm-comparison" / uuid.uuid4().hex

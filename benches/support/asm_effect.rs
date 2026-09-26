@@ -8,7 +8,7 @@ use std::time::Duration;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rust_i18n::t;
 
-rust_i18n::i18n!("./experiments/asm/locales");
+rust_i18n::i18n!("./benches/fixtures/asm");
 
 fn bench_full_t(c: &mut Criterion) {
     rust_i18n::set_locale("en");

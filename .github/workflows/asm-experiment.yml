@@ -3,11 +3,15 @@ name: ASM contribution experiment
 on:
   pull_request:
     paths:
-      - "experiments/asm/**"
-      - "scripts/benchmark-asm.py"
-      - ".github/workflows/asm-experiment.yml"
       - "src/**"
       - "crates/**"
+      - "benches/**"
+      - "scripts/benchmark-asm.py"
+      - "scripts/benchmark-core-asm.py"
+      - "scripts/benchmark-comparison.py"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/asm-experiment.yml"
   workflow_dispatch:
 
 permissions:
@@ -30,10 +34,30 @@ jobs:
       - name: Verify Apple Silicon runner
         if: runner.os == 'macOS'
         run: test "$(uname -m)" = arm64
-      - name: Measure ASM contribution
+      - name: Measure scanner ASM contribution
         run: python3 scripts/benchmark-asm.py --include-size --output target/asm-comparison.md --append-github-summary
-      - name: Upload controlled comparison
+      - name: Upload scanner comparison
         uses: actions/upload-artifact@v4
         with:
           name: asm-contribution-${{ runner.os }}-${{ runner.arch }}
           path: target/asm-comparison.md
+
+  core_interpolation:
+    name: Compare whole interpolation kernels
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Apple Silicon runner
+        if: runner.os == 'macOS'
+        run: test "$(uname -m)" = arm64
+      - name: Measure interpolation ASM contribution
+        run: python3 scripts/benchmark-core-asm.py --include-size --output target/core-asm-comparison.md --append-github-summary
+      - name: Upload interpolation comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-interpolation-${{ runner.os }}-${{ runner.arch }}
+          path: target/core-asm-comparison.md
