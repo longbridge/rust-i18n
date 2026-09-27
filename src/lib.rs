@@ -1,5 +1,7 @@
 #![doc = include_str!("../README.md")]
 
+mod asm;
+
 use std::{ops::Deref, sync::LazyLock};
 
 #[doc(hidden)]
@@ -73,7 +75,7 @@ fn replace_patterns_fast<V: AsRef<str>>(
     let mut output = Vec::with_capacity(bytes.len() + 128);
     let mut offset = 0;
     loop {
-        let Some(percent) = bytes[offset..].iter().position(|&byte| byte == b'%') else {
+        let Some(percent) = asm::find_percent(&bytes[offset..]) else {
             output.extend_from_slice(&bytes[offset..]);
             // SAFETY: Each copied input slice begins or ends at an ASCII marker
             // boundary, so it remains valid UTF-8. Replacements are strings.

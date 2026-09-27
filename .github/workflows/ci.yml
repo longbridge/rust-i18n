@@ -39,7 +39,7 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-test-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Test
         run: make test
-      - name: Test release translation paths
+      - name: Test release translation paths and assembly
         if: runner.os == 'macOS'
         run: |
           cargo test --release -p rust-i18n --lib --tests
