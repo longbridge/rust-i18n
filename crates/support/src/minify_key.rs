@@ -1,6 +1,7 @@
-use siphasher::sip128::SipHasher13;
+use rustc_stable_hash::hashers::{StableSipHasher128, SipHasher128Hash};
+use rustc_stable_hash::FromStableHash;
+use std::hash::Hasher;
 use std::borrow::Cow;
-use std::sync::LazyLock;
 
 /// The default value of `minify_key` feature.
 pub const DEFAULT_MINIFY_KEY: bool = false;
@@ -14,12 +15,19 @@ pub const DEFAULT_MINIFY_KEY_PREFIX: &str = "";
 /// The minimum length of the value to be generated the translation key
 pub const DEFAULT_MINIFY_KEY_THRESH: usize = 127;
 
-// The hasher for generate the literal translation key
-static TR_KEY_HASHER: LazyLock<SipHasher13> = LazyLock::new(SipHasher13::new);
-
 /// Calculate a 128-bit siphash of a value.
+struct Hash128([u64; 2]);
+impl FromStableHash for Hash128 {
+    type Hash = SipHasher128Hash;
+    fn from(SipHasher128Hash(hash): SipHasher128Hash) -> Hash128 {
+        Hash128(hash)
+    }
+}
 pub fn hash128<T: AsRef<[u8]> + ?Sized>(value: &T) -> u128 {
-    TR_KEY_HASHER.hash(value.as_ref()).as_u128()
+    let mut hasher = StableSipHasher128::new();
+    hasher.write(value.as_ref());
+    let Hash128([lo, hi]) = hasher.finish();
+    ((hi as u128) << 64) | (lo as u128)
 }
 
 /// Generate a translation key from a value.
