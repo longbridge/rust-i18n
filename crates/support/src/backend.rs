@@ -114,7 +114,127 @@ where
 /// Simple KeyValue storage backend
 pub struct SimpleBackend {
     /// All translations key is flatten key, like `en.hello.world`
-    translations: HashMap<Cow<'static, str>, HashMap<Cow<'static, str>, Cow<'static, str>>>,
+    translations: LocaleTranslations,
+}
+
+type Messages = HashMap<Cow<'static, str>, Cow<'static, str>>;
+
+// Comparing cached two-byte prefixes avoids hashing the locale before hashing
+// the message key in small catalogs. Use a hash map for larger catalogs or
+// many regional variants sharing a prefix, bounding full-string comparisons.
+const SMALL_LOCALE_LIMIT: usize = 16;
+const SMALL_PREFIX_LIMIT: usize = 4;
+
+struct SmallLocale {
+    prefix: u16,
+    locale: Cow<'static, str>,
+    messages: Messages,
+}
+
+impl SmallLocale {
+    fn new(locale: Cow<'static, str>, messages: Messages) -> Self {
+        Self {
+            prefix: locale_prefix(&locale),
+            locale,
+            messages,
+        }
+    }
+}
+
+// A prefix is only an index. Empty, short, NUL-containing, and UTF-8 locale
+// names can share it, so every candidate is also compared in full.
+fn locale_prefix(locale: &str) -> u16 {
+    let bytes = locale.as_bytes();
+    u16::from_be_bytes([*bytes.first().unwrap_or(&0), *bytes.get(1).unwrap_or(&0)])
+}
+
+enum LocaleTranslations {
+    Small(Vec<SmallLocale>),
+    Large(HashMap<Cow<'static, str>, Messages>),
+}
+
+impl LocaleTranslations {
+    fn from_map(map: HashMap<Cow<'static, str>, Messages>) -> Self {
+        if map.len() <= SMALL_LOCALE_LIMIT {
+            let mut entries = map
+                .into_iter()
+                .map(|(locale, messages)| SmallLocale::new(locale, messages))
+                .collect::<Vec<_>>();
+            entries.sort_by(|a, b| {
+                a.prefix
+                    .cmp(&b.prefix)
+                    .then_with(|| a.locale.cmp(&b.locale))
+            });
+            if entries
+                .windows(SMALL_PREFIX_LIMIT + 1)
+                .any(|group| group.first().unwrap().prefix == group.last().unwrap().prefix)
+            {
+                return Self::Large(
+                    entries
+                        .into_iter()
+                        .map(|entry| (entry.locale, entry.messages))
+                        .collect(),
+                );
+            }
+            Self::Small(entries)
+        } else {
+            Self::Large(map)
+        }
+    }
+
+    fn get(&self, locale: &str) -> Option<&Messages> {
+        match self {
+            Self::Small(entries) => {
+                let prefix = locale_prefix(locale);
+                entries
+                    .iter()
+                    .find(|entry| entry.prefix == prefix && entry.locale.as_ref() == locale)
+                    .map(|entry| &entry.messages)
+            }
+            Self::Large(entries) => entries.get(locale),
+        }
+    }
+
+    fn add(&mut self, locale: Cow<'static, str>, data: Messages) {
+        match self {
+            Self::Small(entries) => {
+                let prefix = locale_prefix(&locale);
+                let start = entries.partition_point(|entry| entry.prefix < prefix);
+                let existing = entries[start..]
+                    .iter()
+                    .take_while(|entry| entry.prefix == prefix)
+                    .position(|entry| entry.locale.as_ref() == locale.as_ref());
+                if let Some(index) = existing {
+                    entries[start + index].messages.extend(data);
+                } else if entries.len() < SMALL_LOCALE_LIMIT
+                    && entries[start..]
+                        .iter()
+                        .take_while(|entry| entry.prefix == prefix)
+                        .count()
+                        < SMALL_PREFIX_LIMIT
+                {
+                    entries.insert(start, SmallLocale::new(locale, data));
+                } else {
+                    let mut map = std::mem::take(entries)
+                        .into_iter()
+                        .map(|entry| (entry.locale, entry.messages))
+                        .collect::<HashMap<_, _>>();
+                    map.insert(locale, data);
+                    *self = Self::Large(map);
+                }
+            }
+            Self::Large(entries) => entries.entry(locale).or_default().extend(data),
+        }
+    }
+
+    fn available_locales(&self) -> Vec<Cow<'_, str>> {
+        let mut locales: Vec<_> = match self {
+            Self::Small(entries) => entries.iter().map(|entry| entry.locale.clone()).collect(),
+            Self::Large(entries) => entries.keys().cloned().collect(),
+        };
+        locales.sort();
+        locales
+    }
 }
 
 impl
@@ -134,7 +254,9 @@ impl
         iter: I,
     ) -> Self {
         Self {
-            translations: iter.into_iter().collect(),
+            // HashMap::collect retains the existing last-wins behavior for
+            // duplicate locale entries.
+            translations: LocaleTranslations::from_map(iter.into_iter().collect()),
         }
     }
 }
@@ -143,7 +265,7 @@ impl SimpleBackend {
     /// Create a new SimpleBackend.
     pub fn new() -> Self {
         SimpleBackend {
-            translations: HashMap::new(),
+            translations: LocaleTranslations::Small(Vec::new()),
         }
     }
 
@@ -163,16 +285,13 @@ impl SimpleBackend {
         locale: Cow<'static, str>,
         data: HashMap<Cow<'static, str>, Cow<'static, str>>,
     ) {
-        let trs = self.translations.entry(locale.into()).or_default();
-        trs.extend(data);
+        self.translations.add(locale, data);
     }
 }
 
 impl Backend for SimpleBackend {
     fn available_locales(&self) -> Vec<Cow<'_, str>> {
-        let mut locales = self.translations.keys().cloned().collect::<Vec<_>>();
-        locales.sort();
-        locales
+        self.translations.available_locales()
     }
 
     fn translate(&self, locale: &str, key: &str) -> Option<Cow<'_, str>> {
@@ -204,7 +323,173 @@ mod tests {
     use std::collections::HashMap;
 
     use super::SimpleBackend;
-    use super::{Backend, BackendExt, NamespacedBackend};
+    use super::{Backend, BackendExt, LocaleTranslations, NamespacedBackend, SMALL_LOCALE_LIMIT};
+
+    #[test]
+    fn small_locale_storage_transitions_and_keeps_merged_messages() {
+        let mut backend = SimpleBackend::new();
+        for index in 0..SMALL_LOCALE_LIMIT {
+            let locale = format!("{index:02}-locale");
+            backend.add_translations(
+                Cow::Owned(locale),
+                HashMap::from([(Cow::Borrowed("first"), Cow::Borrowed("value"))]),
+            );
+        }
+        assert!(matches!(
+            &backend.translations,
+            LocaleTranslations::Small(_)
+        ));
+
+        backend.add_translations(
+            Cow::Borrowed("00-locale"),
+            HashMap::from([(Cow::Borrowed("second"), Cow::Borrowed("another"))]),
+        );
+        assert_eq!(
+            backend.translate("00-locale", "first"),
+            Some(Cow::Borrowed("value"))
+        );
+        assert_eq!(
+            backend.translate("00-locale", "second"),
+            Some(Cow::Borrowed("another"))
+        );
+
+        backend.add_translations(
+            Cow::Borrowed("extra"),
+            HashMap::from([(Cow::Borrowed("first"), Cow::Borrowed("extra value"))]),
+        );
+        assert!(matches!(
+            &backend.translations,
+            LocaleTranslations::Large(_)
+        ));
+        assert_eq!(
+            backend.translate("00-locale", "second"),
+            Some(Cow::Borrowed("another"))
+        );
+        assert_eq!(
+            backend.translate("extra", "first"),
+            Some(Cow::Borrowed("extra value"))
+        );
+        assert_eq!(backend.messages_for_locale("missing"), None);
+        assert_eq!(backend.available_locales().len(), SMALL_LOCALE_LIMIT + 1);
+    }
+
+    #[test]
+    fn from_iterator_duplicate_locale_uses_last_entry() {
+        let first = HashMap::from([(Cow::Borrowed("key"), Cow::Borrowed("old"))]);
+        let second = HashMap::from([(Cow::Borrowed("key"), Cow::Borrowed("new"))]);
+        let backend =
+            SimpleBackend::from_iter([(Cow::Borrowed("en"), first), (Cow::Borrowed("en"), second)]);
+
+        assert!(matches!(
+            &backend.translations,
+            LocaleTranslations::Small(_)
+        ));
+        assert_eq!(backend.available_locales(), vec!["en"]);
+        assert_eq!(backend.translate("en", "key"), Some(Cow::Borrowed("new")));
+    }
+
+    #[test]
+    fn small_locale_index_checks_full_name_after_prefix_collision() {
+        let mut backend = SimpleBackend::new();
+        for (locale, value) in [
+            ("", "empty"),
+            ("\0", "nul"),
+            ("a", "short"),
+            ("a\0", "short nul"),
+            ("zh", "chinese"),
+            ("zh-CN", "simplified"),
+            ("é", "accent"),
+            ("é-x", "accent extended"),
+        ] {
+            backend.add_translations(
+                Cow::Borrowed(locale),
+                HashMap::from([(Cow::Borrowed("key"), Cow::Borrowed(value))]),
+            );
+        }
+
+        assert!(matches!(
+            &backend.translations,
+            LocaleTranslations::Small(_)
+        ));
+        for (locale, expected) in [
+            ("", "empty"),
+            ("\0", "nul"),
+            ("a", "short"),
+            ("a\0", "short nul"),
+            ("zh", "chinese"),
+            ("zh-CN", "simplified"),
+            ("é", "accent"),
+            ("é-x", "accent extended"),
+        ] {
+            assert_eq!(
+                backend.translate(locale, "key"),
+                Some(Cow::Borrowed(expected))
+            );
+        }
+        for missing in ["\0\0", "a\0x", "zh-TW", "é-y"] {
+            assert_eq!(backend.translate(missing, "key"), None);
+        }
+    }
+
+    #[test]
+    fn adding_fifth_shared_prefix_promotes_to_hash_map() {
+        let mut backend = SimpleBackend::new();
+        for index in 0..4 {
+            backend.add_translations(
+                Cow::Owned(format!("en-{index}")),
+                HashMap::from([(Cow::Borrowed("key"), Cow::Owned(index.to_string()))]),
+            );
+        }
+        assert!(matches!(
+            &backend.translations,
+            LocaleTranslations::Small(_)
+        ));
+
+        backend.add_translations(
+            Cow::Borrowed("en-0"),
+            HashMap::from([(Cow::Borrowed("extra"), Cow::Borrowed("merged"))]),
+        );
+        assert!(matches!(
+            &backend.translations,
+            LocaleTranslations::Small(_)
+        ));
+
+        backend.add_translations(
+            Cow::Borrowed("en-4"),
+            HashMap::from([(Cow::Borrowed("key"), Cow::Borrowed("four"))]),
+        );
+        assert!(matches!(
+            &backend.translations,
+            LocaleTranslations::Large(_)
+        ));
+        assert_eq!(
+            backend.translate("en-0", "extra"),
+            Some(Cow::Borrowed("merged"))
+        );
+        assert_eq!(
+            backend.translate("en-4", "key"),
+            Some(Cow::Borrowed("four"))
+        );
+        assert_eq!(backend.translate("en-missing", "key"), None);
+        assert_eq!(backend.available_locales().len(), 5);
+    }
+
+    #[test]
+    fn from_iterator_with_five_shared_prefixes_uses_hash_map() {
+        let backend = SimpleBackend::from_iter((0..5).map(|index| {
+            (
+                Cow::Owned(format!("en-{index}")),
+                HashMap::from([(Cow::Borrowed("key"), Cow::Owned(index.to_string()))]),
+            )
+        }));
+
+        assert!(matches!(
+            &backend.translations,
+            LocaleTranslations::Large(_)
+        ));
+        assert_eq!(backend.translate("en-4", "key"), Some(Cow::Borrowed("4")));
+        assert_eq!(backend.translate("en-missing", "key"), None);
+    }
 
     #[test]
     fn test_simple_backend() {

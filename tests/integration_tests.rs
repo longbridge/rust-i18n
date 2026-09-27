@@ -46,6 +46,9 @@ rust_i18n::i18n!(
 
 #[cfg(test)]
 mod tests {
+    use std::fmt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use rust_i18n::t;
     use rust_i18n_support::load_locales;
 
@@ -115,6 +118,81 @@ mod tests {
     #[test]
     fn test_load() {
         assert!(load_locales("./tests/locales", |_| false).contains_key("en"));
+    }
+
+    #[test]
+    fn generated_lookup_matches_backend_for_direct_hits_and_misses() {
+        for (locale, key) in [
+            ("en", "hello"),
+            ("zh-CN", "messages.hello"),
+            ("zh", "messages.hello"),
+            ("en", "missing.key"),
+            ("日本語", "hello"),
+        ] {
+            assert_eq!(
+                test0::_rust_i18n_try_translate(locale, key),
+                test0::_rust_i18n_backend().translate(locale, key),
+                "locale={locale:?}, key={key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn generated_lookup_preserves_parent_and_configured_fallbacks() {
+        assert_eq!(
+            test0::_rust_i18n_try_translate("zh-CN", "missing.lookup-fallback"),
+            test0::_rust_i18n_backend().translate("zh", "missing.lookup-fallback")
+        );
+        assert_eq!(
+            test1::_rust_i18n_try_translate("unknown", "hello"),
+            test1::_rust_i18n_backend().translate("en", "hello")
+        );
+        assert_eq!(
+            test1::_rust_i18n_try_translate("unknown", "missing.key"),
+            None
+        );
+    }
+
+    #[test]
+    fn literal_and_dynamic_arguments_keep_their_formatting() {
+        let message = String::from("dynamic");
+        assert_eq!(
+            t!(
+                "a.very.nested.message",
+                locale = "en",
+                name = "literal",
+                msg = &message
+            ),
+            "Hello, literal. Your message is: dynamic"
+        );
+        assert_eq!(
+            t!("messages.hello", locale = "en", name = "X":{:>5}),
+            "Hello,     X!"
+        );
+    }
+
+    #[test]
+    fn custom_display_is_formatted_even_when_placeholder_is_unused() {
+        struct CountDisplay<'a>(&'a AtomicUsize);
+
+        impl fmt::Display for CountDisplay<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                f.write_str("formatted")
+            }
+        }
+
+        let count = AtomicUsize::new(0);
+        assert_eq!(
+            t!(
+                "messages.hello",
+                locale = "en",
+                name = "Jason",
+                unused = CountDisplay(&count)
+            ),
+            "Hello, Jason!"
+        );
+        assert_eq!(count.load(Ordering::Relaxed), 1);
     }
 
     #[test]

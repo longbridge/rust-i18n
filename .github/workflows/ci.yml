@@ -15,13 +15,18 @@ jobs:
   build:
     strategy:
       matrix:
-        platform: [ubuntu-latest, windows-latest]
+        platform: [ubuntu-latest, windows-latest, macos-15]
     name: Test
     runs-on: ${{ matrix.platform }}
     env:
       RUST_I18N_DEBUG: 0
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Verify Apple Silicon runner
+        if: runner.os == 'macOS'
+        run: test "$(uname -m)" = arm64
       - name: Setup | Cache Cargo
         uses: actions/cache@v3
         with:
@@ -31,6 +36,21 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ubuntu-test-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-test-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Test
         run: make test
+      - name: Test release translation paths
+        if: runner.os == 'macOS'
+        run: |
+          cargo test --release -p rust-i18n --lib --tests
+      - name: Compare benchmark with base
+        if: runner.os == 'macOS' && github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/benchmark-comparison.py --base "$BASE_SHA" --output target/benchmark-comparison.md --append-github-summary
+      - name: Upload benchmark comparison
+        if: runner.os == 'macOS' && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-comparison-macos-arm64
+          path: target/benchmark-comparison.md

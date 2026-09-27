@@ -20,6 +20,7 @@ pub fn set_locale(locale: &str) {
 }
 
 /// Get current locale
+#[inline]
 pub fn locale() -> impl Deref<Target = str> {
     CURRENT_LOCALE.as_str()
 }
@@ -43,6 +44,75 @@ pub fn locale() -> impl Deref<Target = str> {
 /// assert_eq!(output, "Hello, world!");
 /// ```
 pub fn replace_patterns(input: &str, patterns: &[&str], values: &[String]) -> String {
+    replace_patterns_impl(input, patterns, values)
+}
+
+/// Replace patterns using borrowed or owned values from generated macros.
+#[doc(hidden)]
+pub fn replace_patterns_cow(
+    input: &str,
+    patterns: &[&str],
+    values: &[std::borrow::Cow<'_, str>],
+) -> String {
+    replace_patterns_impl(input, patterns, values)
+}
+
+fn replace_patterns_impl<V: AsRef<str>>(input: &str, patterns: &[&str], values: &[V]) -> String {
+    replace_patterns_fast(input, patterns, values)
+        .unwrap_or_else(|| replace_patterns_legacy(input, patterns, values))
+}
+
+// The common form has complete `%{name}` markers. Keep the original state
+// machine for malformed input, whose historical behavior is more permissive.
+fn replace_patterns_fast<V: AsRef<str>>(
+    input: &str,
+    patterns: &[&str],
+    values: &[V],
+) -> Option<String> {
+    let bytes = input.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len() + 128);
+    let mut offset = 0;
+    loop {
+        let Some(percent) = bytes[offset..].iter().position(|&byte| byte == b'%') else {
+            output.extend_from_slice(&bytes[offset..]);
+            // SAFETY: Each copied input slice begins or ends at an ASCII marker
+            // boundary, so it remains valid UTF-8. Replacements are strings.
+            return Some(unsafe { String::from_utf8_unchecked(output) });
+        };
+        let percent = offset + percent;
+        if bytes.get(percent + 1) != Some(&b'{') {
+            return None;
+        }
+        let start = percent + 2;
+        let Some(end) = bytes[start..]
+            .iter()
+            .position(|&byte| byte == b'}' || byte == b'%')
+        else {
+            // An unfinished final marker is literal text in the legacy parser.
+            output.extend_from_slice(&bytes[offset..]);
+            // SAFETY: As above, all copied slices have UTF-8 boundaries.
+            return Some(unsafe { String::from_utf8_unchecked(output) });
+        };
+        let end = end + start;
+        if bytes[end] == b'%' {
+            return None;
+        }
+        output.extend_from_slice(&bytes[offset..percent]);
+        let key = &bytes[start..end];
+        if let Some((_, value)) = patterns
+            .iter()
+            .zip(values)
+            .find(|(&pattern, _)| pattern.as_bytes() == key)
+        {
+            output.extend_from_slice(value.as_ref().as_bytes());
+        } else {
+            output.extend_from_slice(&bytes[percent..=end]);
+        }
+        offset = end + 1;
+    }
+}
+
+fn replace_patterns_legacy<V: AsRef<str>>(input: &str, patterns: &[&str], values: &[V]) -> String {
     let input_bytes = input.as_bytes();
     let mut pattern_pos = smallvec::SmallVec::<[usize; 64]>::new();
     let mut stage = 0;
@@ -77,7 +147,7 @@ pub fn replace_patterns(input: &str, patterns: &[&str], values: &[String]) -> St
             .clone()
             .find(|(&pattern, _)| pattern.as_bytes() == key)
         {
-            output.extend_from_slice(v.as_bytes());
+            output.extend_from_slice(v.as_ref().as_bytes());
         } else {
             output.extend_from_slice(&input_bytes[start - 1..end + 1]);
         }
@@ -88,6 +158,98 @@ pub fn replace_patterns(input: &str, patterns: &[&str], values: &[String]) -> St
         output.extend_from_slice(remaining);
     }
     unsafe { String::from_utf8_unchecked(output) }
+}
+
+#[cfg(test)]
+mod replace_patterns_tests {
+    use super::{replace_patterns, replace_patterns_cow, replace_patterns_legacy};
+    use std::borrow::Cow;
+
+    #[test]
+    fn replaces_multiple_placeholders_without_changing_surrounding_unicode() {
+        let values = ["Jason".to_string(), "世界".to_string()];
+        assert_eq!(
+            replace_patterns(
+                "你好，%{name}！Welcome to %{place}.",
+                &["name", "place"],
+                &values
+            ),
+            "你好，Jason！Welcome to 世界."
+        );
+    }
+
+    #[test]
+    fn preserves_unknown_and_incomplete_placeholders() {
+        let values = ["Jason".to_string()];
+        assert_eq!(
+            replace_patterns("%{unknown} %{name} %{unfinished", &["name"], &values),
+            "%{unknown} Jason %{unfinished"
+        );
+    }
+
+    #[test]
+    fn long_input_uses_the_same_replacements() {
+        let input = format!(
+            "{}%{{name}}{}%{{missing}}",
+            "界".repeat(128),
+            "a".repeat(512)
+        );
+        let values = ["世界".to_string()];
+        assert_eq!(
+            replace_patterns(&input, &["name"], &values),
+            replace_patterns_legacy(&input, &["name"], &values)
+        );
+    }
+
+    #[test]
+    fn cow_values_match_string_values_for_complete_and_malformed_inputs() {
+        let string_values = ["Jason".to_string(), "世界".to_string()];
+        let cow_values = [Cow::Borrowed("Jason"), Cow::Owned("世界".to_string())];
+        let patterns = ["name", "place"];
+        let long_input = format!("{}%{{name}}{}%{{place}}", "界".repeat(128), "a".repeat(512));
+
+        for input in [
+            "你好，%{name}！Welcome to %{place}.",
+            "%{unknown} %{name} %{unfinished",
+            "%{name}%{place}",
+            "plain text",
+            "unexpected % marker",
+            "%{name%{place}",
+            long_input.as_str(),
+        ] {
+            assert_eq!(
+                replace_patterns_cow(input, &patterns, &cow_values),
+                replace_patterns(input, &patterns, &string_values),
+                "input: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn fast_path_matches_legacy_for_short_marker_sequences() {
+        const ALPHABET: &[u8] = b"%{}ax";
+        let values = ["世界".to_string(), "%{".to_string()];
+        let cow_values = [Cow::Borrowed("世界"), Cow::Owned("%{".to_string())];
+        for len in 0..=7_u32 {
+            for mut code in 0..ALPHABET.len().pow(len) {
+                let mut input = String::new();
+                for _ in 0..len {
+                    input.push(ALPHABET[code % ALPHABET.len()] as char);
+                    code /= ALPHABET.len();
+                }
+                assert_eq!(
+                    replace_patterns(&input, &["a", "x"], &values),
+                    replace_patterns_legacy(&input, &["a", "x"], &values),
+                    "input: {input:?}"
+                );
+                assert_eq!(
+                    replace_patterns_cow(&input, &["a", "x"], &cow_values),
+                    replace_patterns(&input, &["a", "x"], &values),
+                    "input: {input:?}"
+                );
+            }
+        }
+    }
 }
 
 /// Get I18n text

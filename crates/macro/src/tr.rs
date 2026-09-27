@@ -422,11 +422,18 @@ impl Tr {
             .iter()
             .map(|v| {
                 let value = &v.value;
+                if v.specifiers.is_none()
+                    && matches!(value, Value::Expr(Expr::Lit(expr)) if matches!(&expr.lit, syn::Lit::Str(_)))
+                {
+                    // Formatting a string literal with `{}` only copies its
+                    // bytes into a new String. Borrow it until replacement.
+                    return quote! { std::borrow::Cow::Borrowed(#value) };
+                }
                 let sepecifiers = v
                     .specifiers
                     .as_ref()
                     .map_or("{}".to_owned(), |s| format!("{{{}}}", s));
-                quote! { format!(#sepecifiers, #value) }
+                quote! { std::borrow::Cow::Owned(format!(#sepecifiers, #value)) }
             })
             .collect();
         let logging = Self::log_missing();
@@ -452,11 +459,11 @@ impl Tr {
                     let values = &[#(#values),*];
                     {
                     if let Some(translated) = crate::_rust_i18n_try_translate(#locale, &msg_key) {
-                        let replaced = rust_i18n::replace_patterns(&translated, keys, values);
+                        let replaced = rust_i18n::replace_patterns_cow(&translated, keys, values);
                         std::borrow::Cow::from(replaced)
                     } else {
                         #logging
-                        let replaced = rust_i18n::replace_patterns(rust_i18n::CowStr::from(msg_val).as_str(), keys, values);
+                        let replaced = rust_i18n::replace_patterns_cow(rust_i18n::CowStr::from(msg_val).as_str(), keys, values);
                         std::borrow::Cow::from(replaced)
                     }
                 }
