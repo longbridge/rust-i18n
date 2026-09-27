@@ -13,6 +13,7 @@ struct GuardedStr(Guard<Arc<String>>);
 impl Deref for GuardedStr {
     type Target = str;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         self.0.as_str()
     }
@@ -26,6 +27,7 @@ impl AtomicStr {
     }
 
     /// Get the string slice.
+    #[inline]
     pub fn as_str(&self) -> impl Deref<Target = str> {
         GuardedStr(self.0.load())
     }

@@ -271,6 +271,59 @@ fn generate_code(
     translations: BTreeMap<String, BTreeMap<String, String>>,
     args: Args,
 ) -> proc_macro2::TokenStream {
+    // A small generated table can fold a literal t!("key") lookup at the call
+    // site. Larger tables stay in the existing hash backend to limit generated
+    // code size and compile time. Runtime backends keep their original path.
+    let pair_count: usize = translations.values().map(BTreeMap::len).sum();
+    let mut translations_by_key: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    for (locale, messages) in &translations {
+        for (key, value) in messages {
+            translations_by_key
+                .entry(key)
+                .or_default()
+                .push((locale, value));
+        }
+    }
+    let use_static_lookup = args.extend.is_none()
+        && !translations_by_key.is_empty()
+        && translations_by_key.len() <= 128
+        && pair_count <= 256;
+    let (static_lookup, default_backend_lookup) = if use_static_lookup {
+        let key_cases = translations_by_key.iter().map(|(key, locales)| {
+            let locale_cases = locales
+                .iter()
+                .map(|(locale, value)| quote! { #locale => Some(#value), });
+            quote! {
+                #key => match locale {
+                    #(#locale_cases)*
+                    _ => None,
+                },
+            }
+        });
+        (
+            quote! {
+                #[inline(always)]
+                fn _rust_i18n_static_translate(locale: &str, key: &str) -> Option<&'static str> {
+                    match key {
+                        #(#key_cases)*
+                        _ => None,
+                    }
+                }
+            },
+            quote! {
+                // Initializing the backend here preserves default-locale setup
+                // and the first-lookup behavior of the public backend API.
+                let _ = _RUST_I18N_BACKEND.as_ref();
+                _rust_i18n_static_translate(locale, key).map(std::borrow::Cow::Borrowed)
+            },
+        )
+    } else {
+        (
+            quote! {},
+            quote! { _RUST_I18N_BACKEND.translate(locale, key) },
+        )
+    };
+
     let all_translations = translations.iter().map(|(locale, translation)| {
         let translation_length = translation.len();
         let translation = translation.iter().map(
@@ -349,6 +402,8 @@ fn generate_code(
         static _RUST_I18N_EXTENSION: std::sync::OnceLock<rust_i18n::NamespacedBackend> =
             std::sync::OnceLock::new();
 
+        #static_lookup
+
         #[doc(hidden)]
         #[allow(missing_docs)]
         pub fn _rust_i18n_backend() -> &'static dyn rust_i18n::Backend {
@@ -374,7 +429,7 @@ fn generate_code(
             _RUST_I18N_EXTENSION
                 .get()
                 .and_then(|backend| backend.translate(locale, key))
-                .or_else(|| _RUST_I18N_BACKEND.translate(locale, key))
+                .or_else(|| { #default_backend_lookup })
         }
 
         static _RUST_I18N_FALLBACK_LOCALE: Option<&[&'static str]> = #fallback;
@@ -487,4 +542,56 @@ pub fn _minify_key(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[doc(hidden)]
 pub fn _tr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     parse_macro_input!(input as tr::Tr).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_args() -> Args {
+        Args {
+            locales_path: "locales".into(),
+            default_locale: None,
+            fallback: None,
+            extend: None,
+            minify_key: false,
+            minify_key_len: DEFAULT_MINIFY_KEY_LEN,
+            minify_key_prefix: DEFAULT_MINIFY_KEY_PREFIX.into(),
+            minify_key_thresh: DEFAULT_MINIFY_KEY_THRESH,
+        }
+    }
+
+    #[test]
+    fn small_default_table_generates_static_lookup() {
+        let translations = BTreeMap::from([(
+            "en".into(),
+            BTreeMap::from([("hello".into(), "Hello".into())]),
+        )]);
+        let generated = generate_code(translations, test_args()).to_string();
+        assert!(generated.contains("fn _rust_i18n_static_translate"));
+        assert!(generated.contains("_RUST_I18N_BACKEND . as_ref ()"));
+    }
+
+    #[test]
+    fn custom_backend_does_not_generate_static_lookup() {
+        let mut args = test_args();
+        args.extend = Some(syn::parse_quote!(custom_backend));
+        let translations = BTreeMap::from([(
+            "en".into(),
+            BTreeMap::from([("hello".into(), "Hello".into())]),
+        )]);
+        let generated = generate_code(translations, args).to_string();
+        assert!(!generated.contains("fn _rust_i18n_static_translate"));
+        assert!(generated.contains("_RUST_I18N_BACKEND . translate (locale , key)"));
+    }
+
+    #[test]
+    fn large_table_keeps_hash_lookup() {
+        let messages = (0..257)
+            .map(|index| (format!("key-{index}"), "value".into()))
+            .collect();
+        let translations = BTreeMap::from([("en".into(), messages)]);
+        let generated = generate_code(translations, test_args()).to_string();
+        assert!(!generated.contains("fn _rust_i18n_static_translate"));
+    }
 }
