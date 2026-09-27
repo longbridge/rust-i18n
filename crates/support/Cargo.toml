@@ -21,6 +21,7 @@ codegen = [
 [dependencies]
 arc-swap.workspace = true
 base62.workspace = true
+foldhash.workspace = true
 siphasher.workspace = true
 triomphe.workspace = true
 
