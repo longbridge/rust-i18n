@@ -31,8 +31,19 @@ CORE_BENCHMARKS = (
     "t_with_dynamic_args",
     "t_with_threads",
     "t_lorem_ipsum",
+    "t_large",
+    "t_large_with_locale",
+    "t_large_with_args",
+    "t_large_dynamic_key",
 )
-FILTER = r"^(?:t$|t_with_locale(?:_(?:late|missing))?$|t_with_args(?: \((?:str|many)\))?$|t_dynamic_(?:key|locale)$|t_with_dynamic_args$|t_with_threads$|t_lorem_ipsum$|replace_patterns_)"
+FILTER = r"^(?:t$|t_with_locale(?:_(?:late|missing))?$|t_with_args(?: \((?:str|many)\))?$|t_dynamic_(?:key|locale)$|t_with_dynamic_args$|t_with_threads$|t_lorem_ipsum$|t_large(?:_with_locale|_with_args|_dynamic_key)?$|replace_patterns_)"
+# Each Criterion target defines its own `i18n!` catalog.
+BENCH_TARGETS = ("bench", "large_catalog")
+LARGE_CATALOG_BENCH = """
+[[bench]]
+harness = false
+name = "large_catalog"
+"""
 
 
 def run(command, *, cwd=ROOT, env=None, stdout=None):
@@ -79,8 +90,18 @@ def export_baseline(base, destination, archive_path):
             archive.extractall(destination)
     archive_path.unlink()
     shutil.copy2(ROOT / "benches/bench.rs", destination / "benches/bench.rs")
+    shutil.copy2(ROOT / "benches/large_catalog.rs", destination / "benches/large_catalog.rs")
+    fixtures = destination / "benches/fixtures/large_catalog"
+    shutil.rmtree(fixtures, ignore_errors=True)
+    shutil.copytree(ROOT / "benches/fixtures/large_catalog", fixtures)
+    manifest = destination / "Cargo.toml"
+    if 'name = "large_catalog"' not in manifest.read_text():
+        with manifest.open("a") as file:
+            file.write(LARGE_CATALOG_BENCH)
     shutil.copy2(ROOT / "examples/size_probe.rs", destination / "examples/size_probe.rs")
     # A shared lockfile keeps dependency versions identical across revisions.
+    # The baseline is built without --locked, so Cargo may drop packages that
+    # only the current revision uses; it keeps the versions of shared ones.
     shutil.copy2(ROOT / "Cargo.lock", destination / "Cargo.lock")
 
 
@@ -91,30 +112,41 @@ def benchmark_environment(target):
     return environment
 
 
+def lock_flags(source):
+    return ["--locked"] if source == ROOT else []
+
+
 def build_benchmark(source, target):
+    targets = [argument for name in BENCH_TARGETS for argument in ("--bench", name)]
     run(
-        ["cargo", "bench", "--locked", "--bench", "bench", "--no-run"],
+        ["cargo", "bench", *lock_flags(source), *targets, "--no-run"],
         cwd=source,
         env=benchmark_environment(target),
     )
-    candidates = [
-        path for path in (target / "release/deps").glob("bench-*")
-        if path.is_file() and os.access(path, os.X_OK)
-    ]
-    if len(candidates) != 1:
-        raise RuntimeError(f"Expected one benchmark executable in {target}, found {candidates}")
-    return candidates[0]
+    executables = []
+    for name in BENCH_TARGETS:
+        candidates = [
+            path for path in (target / "release/deps").glob(f"{name}-*")
+            if path.is_file() and os.access(path, os.X_OK)
+        ]
+        if len(candidates) != 1:
+            raise RuntimeError(
+                f"Expected one {name} benchmark executable in {target}, found {candidates}"
+            )
+        executables.append(candidates[0])
+    return executables
 
 
-def benchmark(source, target, executable, sample_size, pass_number):
-    run(
-        [
-            str(executable), "--bench", FILTER, "--sample-size", str(sample_size),
-            "--save-baseline", f"pass_{pass_number}",
-        ],
-        cwd=source,
-        env=benchmark_environment(target),
-    )
+def benchmark(source, target, executables, sample_size, pass_number):
+    for executable in executables:
+        run(
+            [
+                str(executable), "--bench", FILTER, "--sample-size", str(sample_size),
+                "--save-baseline", f"pass_{pass_number}",
+            ],
+            cwd=source,
+            env=benchmark_environment(target),
+        )
 
 
 def build_size_probe(source, target):
@@ -122,7 +154,7 @@ def build_size_probe(source, target):
     environment["CARGO_TARGET_DIR"] = str(target)
     run(
         [
-            "cargo", "rustc", "--locked", "--release", "--example", "size_probe",
+            "cargo", "rustc", *lock_flags(source), "--release", "--example", "size_probe",
             "--", "-C", "strip=symbols",
         ],
         cwd=source,
@@ -241,7 +273,8 @@ def report(base, sample_size, old_passes, new_passes, old_size, new_size):
             f"{(new_size / old_size - 1) * 100:+.2f}% |",
             "",
             "Both revisions built the same `size_probe` example with "
-            "`cargo rustc --locked --release --example size_probe -- -C strip=symbols`. "
+            "`cargo rustc --release --example size_probe -- -C strip=symbols` "
+            "(`--locked` for the current revision). "
             "Their output for `en Jason` matched. This is one representative stripped "
             "executable, not a universal artifact size.",
             "",
@@ -283,19 +316,19 @@ def main():
     export_baseline(base, baseline_source, run_dir / "baseline.tar")
     old_target = run_dir / "old-target"
     new_target = run_dir / "new-target"
-    old_executable = build_benchmark(baseline_source, old_target)
-    new_executable = build_benchmark(ROOT, new_target)
+    old_executables = build_benchmark(baseline_source, old_target)
+    new_executables = build_benchmark(ROOT, new_target)
     old_passes = []
     new_passes = []
     revisions = (
-        (baseline_source, old_target, old_executable, old_passes),
-        (ROOT, new_target, new_executable, new_passes),
+        (baseline_source, old_target, old_executables, old_passes),
+        (ROOT, new_target, new_executables, new_passes),
     )
     for pass_number in range(1, args.passes + 1):
-        for source, target, executable, results in (
+        for source, target, executables, results in (
             revisions if pass_number % 2 else reversed(revisions)
         ):
-            benchmark(source, target, executable, args.sample_size, pass_number)
+            benchmark(source, target, executables, args.sample_size, pass_number)
             results.append(estimates(target, pass_number))
     old_size, old_output = build_size_probe(baseline_source, old_target)
     new_size, new_output = build_size_probe(ROOT, new_target)

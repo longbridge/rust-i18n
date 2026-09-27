@@ -117,7 +117,11 @@ pub struct SimpleBackend {
     translations: LocaleTranslations,
 }
 
-type Messages = HashMap<Cow<'static, str>, Cow<'static, str>>;
+// Keys come from the application's own translation files, so the lookup
+// tables do not need SipHash's resistance to adversarial keys.
+type FastMap<K, V> = HashMap<K, V, foldhash::fast::RandomState>;
+type Messages = FastMap<Cow<'static, str>, Cow<'static, str>>;
+type InputMessages = HashMap<Cow<'static, str>, Cow<'static, str>>;
 
 // Comparing cached two-byte prefixes avoids hashing the locale before hashing
 // the message key in small catalogs. Use a hash map for larger catalogs or
@@ -150,11 +154,15 @@ fn locale_prefix(locale: &str) -> u16 {
 
 enum LocaleTranslations {
     Small(Vec<SmallLocale>),
-    Large(HashMap<Cow<'static, str>, Messages>),
+    Large(FastMap<Cow<'static, str>, Messages>),
 }
 
 impl LocaleTranslations {
-    fn from_map(map: HashMap<Cow<'static, str>, Messages>) -> Self {
+    fn from_map(map: HashMap<Cow<'static, str>, InputMessages>) -> Self {
+        let map = map
+            .into_iter()
+            .map(|(locale, messages)| (locale, messages.into_iter().collect::<Messages>()))
+            .collect::<FastMap<_, _>>();
         if map.len() <= SMALL_LOCALE_LIMIT {
             let mut entries = map
                 .into_iter()
@@ -195,7 +203,8 @@ impl LocaleTranslations {
         }
     }
 
-    fn add(&mut self, locale: Cow<'static, str>, data: Messages) {
+    fn add(&mut self, locale: Cow<'static, str>, data: InputMessages) {
+        let data = data.into_iter().collect::<Messages>();
         match self {
             Self::Small(entries) => {
                 let prefix = locale_prefix(&locale);
@@ -218,7 +227,7 @@ impl LocaleTranslations {
                     let mut map = std::mem::take(entries)
                         .into_iter()
                         .map(|entry| (entry.locale, entry.messages))
-                        .collect::<HashMap<_, _>>();
+                        .collect::<FastMap<_, _>>();
                     map.insert(locale, data);
                     *self = Self::Large(map);
                 }

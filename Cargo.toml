@@ -24,6 +24,7 @@ arc-swap = "1.6.0"
 base62 = "2.0.2"
 clap = { version = "4.1.14", features = ["derive"] }
 criterion = "0.5"
+foldhash = "0.2"
 foo = { path = "examples/foo" }
 glob = "0.3"
 globwalk = "0.8.1"
@@ -96,3 +97,7 @@ name = "bench"
 [[bench]]
 harness = false
 name = "minify_key"
+
+[[bench]]
+harness = false
+name = "large_catalog"

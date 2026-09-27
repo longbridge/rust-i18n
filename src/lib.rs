@@ -1,6 +1,13 @@
 #![doc = include_str!("../README.md")]
 
-use std::{ops::Deref, sync::LazyLock};
+use std::{
+    cell::RefCell,
+    ops::Deref,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        LazyLock,
+    },
+};
 
 #[doc(hidden)]
 pub use rust_i18n_macro::{_minify_key, _tr, i18n};
@@ -14,15 +21,85 @@ pub use rust_i18n_support::{
 
 static CURRENT_LOCALE: LazyLock<AtomicStr> = LazyLock::new(|| AtomicStr::from("en"));
 
+// Incremented after every store to `CURRENT_LOCALE`. Each thread keeps a copy
+// of the locale with the version it was read at, and reloads from
+// `CURRENT_LOCALE` only when the version changes.
+static LOCALE_VERSION: AtomicU64 = AtomicU64::new(0);
+
+thread_local! {
+    static LOCALE_CACHE: RefCell<Option<(u64, LocaleStr)>> = const { RefCell::new(None) };
+}
+
+const INLINE_LOCALE_LEN: usize = 22;
+
+/// A copy of the current locale. Short locales are stored inline, so copying
+/// one from the thread cache needs no allocation or atomic reference count.
+#[derive(Clone)]
+enum LocaleStr {
+    Inline {
+        len: u8,
+        bytes: [u8; INLINE_LOCALE_LEN],
+    },
+    Shared(std::sync::Arc<str>),
+}
+
+impl LocaleStr {
+    fn new(locale: &str) -> Self {
+        if locale.len() <= INLINE_LOCALE_LEN {
+            let mut bytes = [0; INLINE_LOCALE_LEN];
+            bytes[..locale.len()].copy_from_slice(locale.as_bytes());
+            Self::Inline {
+                len: locale.len() as u8,
+                bytes,
+            }
+        } else {
+            Self::Shared(locale.into())
+        }
+    }
+}
+
+impl Deref for LocaleStr {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &str {
+        match self {
+            // SAFETY: `bytes[..len]` was copied from a `str` in `LocaleStr::new`.
+            Self::Inline { len, bytes } => unsafe {
+                std::str::from_utf8_unchecked(bytes.get_unchecked(..*len as usize))
+            },
+            Self::Shared(locale) => locale,
+        }
+    }
+}
+
 /// Set current locale
 pub fn set_locale(locale: &str) {
     CURRENT_LOCALE.replace(locale);
+    // Release pairs with the Acquire load in `locale()`, so a reader that sees
+    // the new version also sees the new locale.
+    LOCALE_VERSION.fetch_add(1, Ordering::Release);
 }
 
 /// Get current locale
 #[inline]
 pub fn locale() -> impl Deref<Target = str> {
-    CURRENT_LOCALE.as_str()
+    let version = LOCALE_VERSION.load(Ordering::Acquire);
+    LOCALE_CACHE
+        .try_with(|cache| {
+            let mut cache = cache.borrow_mut();
+            match &*cache {
+                Some((cached, locale)) if *cached == version => locale.clone(),
+                _ => {
+                    let locale = LocaleStr::new(&CURRENT_LOCALE.as_str());
+                    *cache = Some((version, locale.clone()));
+                    locale
+                }
+            }
+        })
+        // The thread cache is unavailable while thread-local storage is
+        // being destroyed.
+        .unwrap_or_else(|_| LocaleStr::new(&CURRENT_LOCALE.as_str()))
 }
 
 /// Replace patterns and return a new string.
