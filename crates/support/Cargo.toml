@@ -22,7 +22,7 @@ codegen = [
 arc-swap.workspace = true
 base62.workspace = true
 foldhash.workspace = true
-siphasher.workspace = true
+rustc-stable-hash.workspace = true
 triomphe.workspace = true
 
 # codegen-only deps

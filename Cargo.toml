@@ -44,7 +44,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde-saphyr = "1.2"
 serde_yaml = "0.9.33"
-siphasher = "1.0"
+rustc-stable-hash = "0.1"
 smallvec = "1.12.0"
 syn = { version = "2.0.18", features = ["full", "extra-traits"] }
 toml = "0.8.8"
