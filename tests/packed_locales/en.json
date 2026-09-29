@@ -1,0 +1,8 @@
+{
+  "delimiter;key,1": "12;34,56",
+  "unicode": "你好 %{name} 🎉",
+  "é;键": "bien",
+  "newline": "line one\nline two",
+  "control": "\u0000\u0001\u0002",
+  "empty": ""
+}
