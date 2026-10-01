@@ -4,7 +4,7 @@ use std::{
     cell::RefCell,
     ops::Deref,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU32, Ordering},
         LazyLock,
     },
 };
@@ -24,10 +24,10 @@ static CURRENT_LOCALE: LazyLock<AtomicStr> = LazyLock::new(|| AtomicStr::from("e
 // Incremented after every store to `CURRENT_LOCALE`. Each thread keeps a copy
 // of the locale with the version it was read at, and reloads from
 // `CURRENT_LOCALE` only when the version changes.
-static LOCALE_VERSION: AtomicU64 = AtomicU64::new(0);
+static LOCALE_VERSION: AtomicU32 = AtomicU32::new(0);
 
 thread_local! {
-    static LOCALE_CACHE: RefCell<Option<(u64, LocaleStr)>> = const { RefCell::new(None) };
+    static LOCALE_CACHE: RefCell<Option<(u32, LocaleStr)>> = const { RefCell::new(None) };
 }
 
 const INLINE_LOCALE_LEN: usize = 22;
