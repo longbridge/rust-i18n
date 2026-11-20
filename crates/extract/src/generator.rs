@@ -50,7 +50,7 @@ fn convert_text(trs: &Translations, format: &str) -> String {
     match format {
         "json" => serde_json::to_string_pretty(&value).unwrap(),
         "yaml" | "yml" => {
-            let text = serde_yaml::to_string(&value).unwrap();
+            let text = serde_saphyr::to_string(&value).unwrap();
             // Remove leading `---`
             text.trim_start_matches("---").trim_start().to_string()
         }
@@ -80,8 +80,8 @@ fn generate_result<'a, P: AsRef<Path>>(
             if !m.locations.is_empty() {
                 for _l in &m.locations {
                     // TODO: write file and line as YAML comment
-                    // Reason: serde_yaml not support write comments
-                    // https://github.com/dtolnay/serde-yaml/issues/145
+                    // Reason: serde-saphyr does not support writing comments
+                    // https://github.com/bourumir-wyngs/serde-saphyr/issues
                 }
             }
 
